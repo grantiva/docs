@@ -1,0 +1,71 @@
+---
+title: "Installation"
+description: "Add the Grantiva SDK to your iOS or macOS project"
+---
+
+## Requirements
+
+- iOS 18.0+ / macOS 15.0+
+- Swift 6.0+
+- Xcode 16+
+
+The SDK has **zero external dependencies**.
+
+## Swift Package Manager
+
+### Xcode
+
+1. Open your project in Xcode
+2. Go to **File > Add Package Dependencies**
+3. Enter the repository URL: `https://github.com/grantiva/sdk`
+4. Select **Up to Next Major Version** from `1.0.0`
+5. Add `Grantiva` to your app target
+
+### Package.swift
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/grantiva/sdk", from: "1.0.0")
+],
+targets: [
+    .target(
+        name: "YourApp",
+        dependencies: [
+            .product(name: "Grantiva", package: "sdk")
+        ]
+    )
+]
+```
+
+## Initialize the SDK
+
+```swift
+import Grantiva
+
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
+```
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `teamId` | `String` | Yes | Your Apple Developer Team ID |
+| `apiKey` | `String?` | No | API key for simulator/development use |
+
+The SDK automatically reads your Bundle ID from `Bundle.main.bundleIdentifier`. Together with the Team ID, this identifies your app to the Grantiva backend — no API keys needed on-device.
+
+### API key mode (development only)
+
+App Attest is not available in the iOS simulator. For development, pass an API key:
+
+```swift
+#if targetEnvironment(simulator)
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", apiKey: "your-dev-api-key")
+#else
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
+#endif
+```
+
+In API key mode, the SDK skips real App Attest and returns a synthetic attestation result. Do not ship API keys in production builds.
+
+## App Attest capability
+
+No special entitlements are required. App Attest is available on all iOS 14+ devices (real hardware only). The SDK checks availability at runtime and throws `GrantivaError.deviceNotSupported` if unavailable.

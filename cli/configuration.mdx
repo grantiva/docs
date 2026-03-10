@@ -1,0 +1,103 @@
+---
+title: "Configuration"
+description: "Configure visual regression testing with grantiva.yml"
+---
+
+## Generate a config file
+
+```bash
+grantiva init
+```
+
+This creates `grantiva.yml` in your project root. The CLI auto-detects your Xcode scheme and workspace.
+
+```bash
+grantiva init --scheme MyApp --bundle-id com.example.myapp
+```
+
+## Configuration reference
+
+```yaml
+# Required
+scheme: MyApp
+simulator: iPhone 16
+
+# Optional
+workspace: MyApp.xcworkspace    # If using a workspace
+project: MyApp.xcodeproj        # If not using a workspace
+bundle_id: com.example.myapp
+
+# Screens to capture
+screens:
+  - name: Home
+    path: launch
+
+  - name: Profile
+    path:
+      - tap: "Profile"
+      - wait: 1
+
+  - name: Settings
+    path:
+      - swipe: up
+      - tap: "Settings"
+      - wait: 2
+
+# Diff thresholds
+diff:
+  threshold: 0.02              # Max pixel diff % (0–1.0)
+  perceptual_threshold: 5.0    # Max CIE76 color distance
+```
+
+## Screens
+
+Each screen has a `name` and a `path` that describes how to navigate to it.
+
+### Simple launch screenshot
+
+```yaml
+- name: Home
+  path: launch
+```
+
+### Navigation steps
+
+```yaml
+- name: Settings
+  path:
+    - tap: "Settings"          # Tap by accessibility label
+    - wait: 2                  # Wait N seconds
+    - swipe: up                # up, down, left, right
+    - tap: "Advanced"
+```
+
+| Action | Description |
+|--------|-------------|
+| `launch` | Screenshot immediately after app launch |
+| `tap: "Label"` | Tap element by accessibility label |
+| `swipe: direction` | Swipe up, down, left, or right |
+| `wait: N` | Wait N seconds |
+
+A screenshot is automatically taken at the end of each screen's path.
+
+## Diff thresholds
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `threshold` | `0.02` | Maximum pixel difference percentage (2%) |
+| `perceptual_threshold` | `5.0` | Maximum CIE76 perceptual color distance |
+
+A screen fails if either threshold is exceeded.
+
+## Directory structure
+
+After running commands, Grantiva creates:
+
+```
+.grantiva/
+├── captures/          # Screenshots from capture runs
+│   └── diffs/         # Diff images for failed comparisons
+└── baselines/         # Local baseline images (if not using cloud)
+```
+
+Credentials are stored at `~/.grantiva/auth.json`.

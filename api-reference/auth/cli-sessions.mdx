@@ -1,0 +1,73 @@
+---
+title: "CLI Sessions"
+description: "Authenticate the Grantiva CLI via browser login"
+---
+
+The CLI authentication flow creates a session, opens a browser for login, and polls until complete.
+
+## Create a session
+
+```
+POST /api/v1/auth/cli/sessions
+```
+
+### Response
+
+```json
+{
+  "session_id": "uuid"
+}
+```
+
+---
+
+## Poll session status
+
+```
+GET /api/v1/auth/cli/sessions/:sessionId
+```
+
+### Response
+
+```json
+{
+  "status": "pending",
+  "api_key": null,
+  "email": null
+}
+```
+
+Status values: `pending`, `active`, `expired`.
+
+When `active`, the response includes the API key and email:
+
+```json
+{
+  "status": "active",
+  "api_key": "aat_abc123...",
+  "email": "user@example.com"
+}
+```
+
+---
+
+## Validate API key
+
+```
+GET /api/v1/auth/me
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `Authorization` | Yes | `Bearer <api_key>` |
+
+### Response
+
+```json
+{
+  "email": "user@example.com",
+  "api_key_prefix": "aat_abc1"
+}
+```

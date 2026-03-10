@@ -1,0 +1,110 @@
+---
+title: "Feature Flags Quick Start"
+description: "Toggle features remotely in your iOS app without app updates"
+---
+
+## Prerequisites
+
+- Grantiva SDK installed ([Installation](/sdk/installation))
+- At least one flag created in the [dashboard](https://grantiva.io/dashboard)
+
+## 1. Create a flag in the dashboard
+
+Go to **Settings > Feature Flags** and create a flag:
+
+- **Key**: `dark_mode`
+- **Type**: Boolean
+- **Value**: `true` (production), `false` (staging)
+
+## 2. Read flags in your app
+
+```swift
+let darkMode = try await grantiva.flags.boolValue(for: "dark_mode", default: false)
+
+if darkMode {
+    enableDarkMode()
+}
+```
+
+## 3. All flag types
+
+```swift
+// Boolean
+let enabled = try await grantiva.flags.boolValue(for: "new_feature", default: false)
+
+// String
+let theme = try await grantiva.flags.stringValue(for: "theme", default: "light")
+
+// Integer
+let maxUploads = try await grantiva.flags.intValue(for: "max_uploads", default: 5)
+
+// Double
+let threshold = try await grantiva.flags.doubleValue(for: "risk_threshold", default: 0.5)
+
+// All flags at once
+let allFlags = try await grantiva.flags.getFlags()
+```
+
+## 4. Environments
+
+Flags can have different values per environment:
+
+```swift
+// Switch to staging
+grantiva.flags.environment = .staging
+let flags = try await grantiva.flags.getFlags(forceRefresh: true)
+
+// Back to production
+grantiva.flags.environment = .production
+```
+
+## 5. Cache control
+
+Flags are cached for 5 minutes by default:
+
+```swift
+// Change cache duration
+grantiva.flags.cacheTTL = 60  // 1 minute
+
+// Force refresh
+grantiva.flags.refresh()
+let fresh = try await grantiva.flags.getFlags()
+```
+
+## SwiftUI example
+
+```swift
+struct ContentView: View {
+    @State private var showNewFeature = false
+    let grantiva: Grantiva
+
+    var body: some View {
+        VStack {
+            Text("My App")
+            if showNewFeature {
+                NewFeatureView()
+            }
+        }
+        .task {
+            showNewFeature = (try? await grantiva.flags.boolValue(
+                for: "new_feature",
+                default: false
+            )) ?? false
+        }
+    }
+}
+```
+
+## Tier limits
+
+| Tier | Max flags |
+|------|-----------|
+| Free | 5 |
+| Pro | 25 |
+| Business | 100 |
+| Enterprise | Unlimited |
+
+## Next steps
+
+- [Full Feature Flags SDK reference](/sdk/feature-flags)
+- [Feature Flags API reference](/api-reference/flags/get-flags)

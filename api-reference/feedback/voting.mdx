@@ -1,0 +1,61 @@
+---
+title: "Voting"
+description: "Vote and unvote on feature requests"
+---
+
+## Vote for a feature
+
+```
+POST /api/v1/feedback/features/:featureId/vote
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+
+### Body
+
+```json
+{
+  "voterId": "user_123",
+  "deviceHash": "optional-device-hash"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `voterId` | `string` | Yes | User or device identifier |
+| `deviceHash` | `string` | No | Device hash for deduplication |
+
+### Response
+
+```json
+{
+  "id": "uuid",
+  "featureRequestId": "uuid",
+  "createdAt": "2025-03-10T12:00:00Z"
+}
+```
+
+Each user/device can vote once per feature request. Duplicate votes return `409 Conflict`.
+
+---
+
+## Remove a vote
+
+```
+DELETE /api/v1/feedback/features/:featureId/vote
+```
+
+### Query parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `voter_id` | `string` | Yes | User or device identifier |
+
+### Response
+
+`204 No Content`

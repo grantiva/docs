@@ -1,0 +1,66 @@
+---
+title: "Dashboard"
+description: "Get analytics dashboard data"
+---
+
+## Request
+
+```
+GET /api/v1/analytics/dashboard
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-API-Key` | Yes | Your API key |
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `timeRange` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d` |
+
+## Response
+
+```json
+{
+  "totalDevices": 1250,
+  "activeDevices": 890,
+  "attestationStats": {
+    "total": 15420,
+    "successful": 15100,
+    "failed": 320,
+    "successRate": 97.9
+  },
+  "riskMetrics": {
+    "averageRiskScore": 18.5,
+    "highRiskDevices": 12,
+    "jailbrokenDevices": 3
+  },
+  "complianceMetrics": {
+    "compliantDevices": 1230,
+    "nonCompliantDevices": 20,
+    "complianceRate": 98.4
+  },
+  "deviceBreakdown": {
+    "modelCounts": {
+      "iPhone15,2": 420,
+      "iPhone16,1": 310,
+      "iPhone14,5": 180
+    },
+    "osVersionCounts": {
+      "18.0": 650,
+      "17.5": 320,
+      "17.4": 180
+    }
+  },
+  "geographicDistribution": {
+    "US": 580,
+    "DE": 120,
+    "JP": 95
+  },
+  "timeRange": "30d",
+  "generatedAt": "2025-03-10T12:00:00Z"
+}
+```

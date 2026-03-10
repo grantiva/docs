@@ -1,0 +1,84 @@
+---
+title: "Feature Flags"
+description: "Toggle features remotely with environment-aware flags"
+---
+
+Feature flags let you control feature rollout from the Grantiva dashboard without app updates. Access them via `grantiva.flags`.
+
+## Get all flags
+
+```swift
+let flags = try await grantiva.flags.getFlags()
+
+if flags["dark_mode"]?.boolValue == true {
+    enableDarkMode()
+}
+```
+
+Flags are cached in memory for 5 minutes by default.
+
+## Typed accessors
+
+```swift
+// Boolean (default: false)
+let enabled = try await grantiva.flags.boolValue(for: "dark_mode", default: false)
+
+// String (default: "")
+let theme = try await grantiva.flags.stringValue(for: "theme", default: "light")
+
+// Integer (default: 0)
+let limit = try await grantiva.flags.intValue(for: "upload_limit", default: 10)
+
+// Double (default: 0.0)
+let threshold = try await grantiva.flags.doubleValue(for: "risk_threshold", default: 0.5)
+```
+
+Default values are returned when the flag doesn't exist or can't be parsed to the requested type.
+
+## Get a single flag
+
+```swift
+if let value = try await grantiva.flags.value(for: "feature_x") {
+    print(value.rawValue)       // Raw string from server
+    print(value.valueType)      // FlagValueType: boolean, integer, double, string, json
+    print(value.boolValue)      // Bool?
+    print(value.intValue)       // Int?
+    print(value.stringValue)    // String (always succeeds)
+    print(value.jsonValue)      // Any? (parsed JSON)
+}
+```
+
+## Environments
+
+Flags can be scoped to different environments:
+
+```swift
+grantiva.flags.environment = .staging  // .development, .staging, .production
+let flags = try await grantiva.flags.getFlags(forceRefresh: true)
+```
+
+Default is `.production`.
+
+## Cache control
+
+```swift
+// Change cache TTL (default: 300 seconds / 5 minutes)
+grantiva.flags.cacheTTL = 60  // 1 minute
+
+// Force refresh on next fetch
+grantiva.flags.refresh()
+
+// Clear all cached flag data
+grantiva.flags.clearCache()
+```
+
+The cache is automatically cleared when user identity changes via `grantiva.identify()`.
+
+## Tier limits
+
+| Tier | Max flags |
+|------|-----------|
+| Free | 5 |
+| Pro | 25 |
+| Business | 100 |
+| Enterprise | Unlimited |

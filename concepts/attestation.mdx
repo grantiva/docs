@@ -1,0 +1,74 @@
+---
+title: "Device Attestation"
+description: "How Grantiva verifies device integrity using Apple App Attest"
+---
+
+## What is device attestation?
+
+Device attestation verifies that an API request is coming from a real, unmodified Apple device running your legitimate app. It uses Apple's [App Attest](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity) framework to cryptographically prove device integrity.
+
+## Why it matters
+
+Without device attestation, anyone can:
+- Reverse-engineer your API and call it from scripts
+- Use jailbroken devices to bypass in-app restrictions
+- Run your app in emulators or modified environments
+- Replay or forge API requests
+
+Attestation stops all of these attacks.
+
+## How it works
+
+```
+┌──────────┐         ┌──────────┐         ┌───────┐
+│  Your App │         │ Grantiva │         │ Apple │
+└─────┬────┘         └─────┬────┘         └───┬───┘
+      │  1. Request challenge  │               │
+      │───────────────────────>│               │
+      │  2. Challenge token    │               │
+      │<───────────────────────│               │
+      │  3. App Attest         │               │
+      │────────────────────────────────────────>
+      │  4. Attestation object │               │
+      │<────────────────────────────────────────
+      │  5. Validate           │               │
+      │───────────────────────>│               │
+      │                        │ 6. Verify with Apple
+      │                        │───────────────>
+      │  7. JWT + intelligence │               │
+      │<───────────────────────│               │
+```
+
+1. Your app requests a one-time challenge from Grantiva
+2. Grantiva returns a cryptographic challenge
+3. The SDK calls Apple's App Attest to create an attestation
+4. Apple returns a signed attestation object
+5. The SDK sends it to Grantiva for validation
+6. Grantiva verifies the attestation with Apple's servers
+7. A signed JWT is returned with device intelligence and risk score
+
+## No API keys on-device
+
+Your app is identified by its **Bundle ID** and **Team ID** — both are sent automatically by the SDK. No API keys are stored in the app binary, so there's nothing to extract or steal.
+
+Server-to-server API keys (visible in the dashboard) are for backend operations only.
+
+## What the JWT contains
+
+The attestation JWT includes:
+- Device integrity status
+- Risk score (0–100)
+- Jailbreak detection
+- Device model and OS version
+- Attestation count and history
+- Your [custom claims](/concepts/custom-claims) if configured
+
+## Simulator development
+
+App Attest is not available in the iOS simulator. For development, initialize the SDK with an API key:
+
+```swift
+let grantiva = Grantiva(teamId: "...", apiKey: "your-dev-key")
+```
+
+This returns a synthetic attestation result with `deviceIntegrity: "api_key_mode"`. Never ship API keys in production builds.

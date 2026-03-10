@@ -1,0 +1,62 @@
+---
+title: "Error Handling"
+description: "Handle SDK errors gracefully in your app"
+---
+
+All SDK operations throw `GrantivaError`, which conforms to `LocalizedError`.
+
+## Error types
+
+| Error | When | Suggested action |
+|-------|------|-----------------|
+| `deviceNotSupported` | App Attest unavailable (simulator, old device) | Fall back to API key mode for development |
+| `attestationNotAvailable` | App Attest not supported in this region | Degrade gracefully |
+| `networkError(Error)` | Network communication failed | Retry with backoff |
+| `validationFailed` | Server rejected the attestation | Device may be compromised — block or challenge |
+| `tokenExpired` | JWT token has expired | Call `refreshToken()` or `validateAttestation()` |
+| `configurationError` | Invalid Bundle ID or Team ID | Check SDK initialization |
+| `keyGenerationFailed` | Can't create attestation key | Retry; may indicate Keychain issue |
+| `challengeExpired` | Server challenge timed out | Retry — the SDK handles this automatically |
+| `invalidResponse` | Unexpected server response format | Check SDK/server version compatibility |
+| `rateLimited` | Too many requests | Back off and retry after delay |
+| `feedbackNotAvailable` | Feedback not enabled for this tenant | Check your plan includes feedback |
+
+## Example
+
+```swift
+do {
+    let result = try await grantiva.validateAttestation()
+} catch let error as GrantivaError {
+    switch error {
+    case .deviceNotSupported:
+        // Use API key mode for development
+        print("Run on a real device for attestation")
+    case .networkError(let underlying):
+        // Retry logic
+        print("Network error: \(underlying.localizedDescription)")
+    case .validationFailed:
+        // Device integrity issue
+        print("Device verification failed")
+    case .tokenExpired:
+        // Re-attest
+        let refreshed = try await grantiva.refreshToken()
+    case .rateLimited:
+        // Back off
+        try await Task.sleep(for: .seconds(5))
+    default:
+        print(error.localizedDescription)
+    }
+}
+```
+
+## Localized descriptions
+
+Every `GrantivaError` case provides a human-readable `errorDescription`:
+
+```swift
+GrantivaError.deviceNotSupported.errorDescription
+// "App Attest requires iOS 14.0 or later and is not available in simulator"
+
+GrantivaError.rateLimited.errorDescription
+// "You have exceeded the rate limit for this action"
+```

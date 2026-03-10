@@ -1,0 +1,63 @@
+---
+title: "Analytics"
+description: "View device intelligence, attestation trends, and risk distribution"
+---
+
+The analytics dashboard provides real-time insights into your app's device landscape.
+
+## Summary cards
+
+At the top of the analytics page:
+
+- **Total attestations** — All attestation attempts in the selected period
+- **Unique devices** — Distinct devices that attested
+- **Average risk score** — Mean risk score across all devices
+- **Monthly active devices (MAD)** — Unique devices in the current billing period
+
+## Charts
+
+### Attestation trends
+
+A line chart showing daily attestation volume over the selected time range. Helps identify usage spikes and growth patterns.
+
+### Risk distribution
+
+A breakdown of devices by risk level: Low (0–20), Medium (21–50), High (51–75), Critical (76–100).
+
+### Device models
+
+Top device models by attestation count. Useful for understanding your user base and prioritizing device-specific testing.
+
+### OS versions
+
+Distribution of iOS/macOS versions across your attesting devices.
+
+## Data retention
+
+| Tier | Retention |
+|------|-----------|
+| Free | 7 days |
+| Pro | 30 days |
+| Business | 90 days |
+| Enterprise | 1 year |
+
+## API access
+
+Access analytics programmatically:
+
+```bash
+curl https://grantiva.io/api/v1/analytics/dashboard?timeRange=30d \
+  -H "X-API-Key: YOUR_API_KEY"
+```
+
+See the [Analytics API reference](/api-reference/analytics/dashboard) for details.
+
+## Export
+
+Export device data as CSV from the analytics page or via the API:
+
+```bash
+curl "https://grantiva.io/api/v1/analytics/export?type=csv&data=devices&period=30d" \
+  -H "X-API-Key: YOUR_API_KEY" \
+  -o devices.csv
+```

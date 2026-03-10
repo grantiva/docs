@@ -1,0 +1,47 @@
+---
+title: "Get Flags"
+description: "Retrieve feature flag values for a tenant"
+---
+
+## Request
+
+```
+GET /api/v1/flags
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `environment` | `string` | `production` | `production`, `staging`, or `development` |
+
+## Response
+
+```json
+{
+  "flags": {
+    "dark_mode": true,
+    "upload_limit": 50,
+    "theme": "modern",
+    "beta_features": false
+  }
+}
+```
+
+Flag values are resolved for the requested environment. Each flag value is typed (boolean, integer, double, string, or JSON).
+
+## Tier limits
+
+| Tier | Max flags |
+|------|-----------|
+| Free | 5 |
+| Pro | 25 |
+| Business | 100 |
+| Enterprise | Unlimited |

@@ -1,0 +1,129 @@
+---
+title: "Support Tickets"
+description: "Create and manage support tickets"
+---
+
+## Create a ticket
+
+```
+POST /api/v1/support/tickets
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+
+### Body
+
+```json
+{
+  "subject": "App crashes on launch",
+  "body": "After updating to v2.1, the app crashes immediately...",
+  "submitterId": "user_123",
+  "submitterEmail": "user@example.com",
+  "deviceHash": "optional"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `subject` | `string` | Yes | 3–200 characters |
+| `body` | `string` | Yes | 10–5,000 characters |
+| `submitterId` | `string` | Yes | User or device identifier |
+| `submitterEmail` | `string` | No | Contact email for replies |
+| `deviceHash` | `string` | No | Device hash |
+
+### Response
+
+Returns the created ticket with messages.
+
+---
+
+## List user's tickets
+
+```
+GET /api/v1/support/tickets
+```
+
+### Query parameters
+
+| Parameter | Type | Required | Description |
+|-----------|------|----------|-------------|
+| `submitter_id` | `string` | Yes | User or device identifier |
+
+### Response
+
+```json
+[
+  {
+    "id": "uuid",
+    "subject": "App crashes on launch",
+    "status": "open",
+    "priority": "normal",
+    "messageCount": 3,
+    "createdAt": "2025-03-10T12:00:00Z",
+    "updatedAt": "2025-03-10T14:00:00Z"
+  }
+]
+```
+
+---
+
+## Get ticket with messages
+
+```
+GET /api/v1/support/tickets/:ticketId
+```
+
+### Response
+
+```json
+{
+  "id": "uuid",
+  "subject": "App crashes on launch",
+  "status": "open",
+  "priority": "normal",
+  "messageCount": 3,
+  "createdAt": "2025-03-10T12:00:00Z",
+  "messages": [
+    {
+      "id": "uuid",
+      "ticketId": "uuid",
+      "authorType": "user",
+      "body": "After updating to v2.1...",
+      "createdAt": "2025-03-10T12:00:00Z"
+    },
+    {
+      "id": "uuid",
+      "ticketId": "uuid",
+      "authorType": "admin",
+      "body": "Thanks for reporting. Can you share your device model?",
+      "createdAt": "2025-03-10T13:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Reply to a ticket
+
+```
+POST /api/v1/support/tickets/:ticketId/messages
+```
+
+### Body
+
+```json
+{
+  "authorId": "user_123",
+  "body": "I'm using an iPhone 15 Pro running iOS 18.0."
+}
+```
+
+### Response
+
+Returns the created message object.

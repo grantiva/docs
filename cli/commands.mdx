@@ -1,0 +1,168 @@
+---
+title: "Commands"
+description: "Complete reference for all Grantiva CLI commands"
+---
+
+All commands support `--json` for machine-readable output.
+
+## `grantiva ci run`
+
+Run the full visual regression pipeline: build, capture, compare, upload.
+
+```bash
+grantiva ci run [--scheme SCHEME] [--simulator SIMULATOR] [--bundle-id ID]
+                [--skip-build] [--app-path PATH] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--scheme` | Xcode scheme to build |
+| `--simulator` | Simulator name (e.g., "iPhone 16") |
+| `--bundle-id` | App bundle identifier |
+| `--skip-build` | Skip building, use existing DerivedData artifacts |
+| `--app-path` | Path to pre-built .app bundle (implies --skip-build) |
+
+**What it does:**
+1. Boots simulator
+2. Builds the app (unless skipped)
+3. Installs, launches, and starts the XCUITest driver
+4. Captures screenshots for all configured screens
+5. Compares against baselines (pixel + perceptual)
+6. Uploads results to the Grantiva dashboard
+7. Posts a GitHub Check Run with results
+
+Exit code `0` if all screens pass, `1` if any fail.
+
+---
+
+## `grantiva diff capture`
+
+Capture screenshots without comparing.
+
+```bash
+grantiva diff capture [--scheme SCHEME] [--simulator SIMULATOR]
+                      [--bundle-id ID] [--no-run] [--json]
+```
+
+Saves `.png` files to `.grantiva/captures/`.
+
+---
+
+## `grantiva diff compare`
+
+Compare captures against baselines.
+
+```bash
+grantiva diff compare [--capture] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--capture` | Capture fresh screenshots before comparing |
+
+Baselines are loaded from the Grantiva server (if authenticated) or `.grantiva/baselines/` locally. Diff images for failures are saved to `.grantiva/captures/diffs/`.
+
+---
+
+## `grantiva diff approve`
+
+Promote current captures as new baselines.
+
+```bash
+grantiva diff approve [SCREEN_NAME ...] [--json]
+```
+
+Pass specific screen names to approve selectively, or omit to approve all.
+
+---
+
+## `grantiva auth login`
+
+Authenticate with Grantiva.
+
+```bash
+grantiva auth login [--api-key KEY] [--base-url URL] [--json]
+```
+
+Without `--api-key`, opens a browser login flow. With `--api-key`, validates the key directly. Credentials saved to `~/.grantiva/auth.json`.
+
+---
+
+## `grantiva auth status`
+
+Show current authentication status.
+
+```bash
+grantiva auth status [--json]
+```
+
+Checks `GRANTIVA_API_KEY` env var first, then `~/.grantiva/auth.json`.
+
+---
+
+## `grantiva auth logout`
+
+Remove stored credentials.
+
+```bash
+grantiva auth logout [--json]
+```
+
+---
+
+## `grantiva doctor`
+
+Check environment and dependencies.
+
+```bash
+grantiva doctor [--json]
+```
+
+Verifies macOS version, Xcode, Swift, simulator availability, and command-line tools.
+
+---
+
+## `grantiva driver build`
+
+Build and cache the XCUITest driver.
+
+```bash
+grantiva driver build [--simulator SIMULATOR] [--json]
+```
+
+Run once per Xcode version. The driver is cached at `~/.grantiva/driver/`.
+
+---
+
+## `grantiva driver start`
+
+Start the driver server for manual use.
+
+```bash
+grantiva driver start [--bundle-id ID] [--simulator SIMULATOR]
+                      [--port PORT] [--json]
+```
+
+Default port is `22088`. Blocks until interrupted.
+
+---
+
+## `grantiva driver stop`
+
+Stop running driver processes.
+
+```bash
+grantiva driver stop [--json]
+```
+
+---
+
+## `grantiva init`
+
+Generate a `grantiva.yml` configuration file.
+
+```bash
+grantiva init [--scheme SCHEME] [--bundle-id BUNDLE_ID]
+```
+
+Auto-detects workspace/project and scheme if not specified.

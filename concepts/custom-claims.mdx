@@ -1,0 +1,89 @@
+---
+title: "Custom Claims"
+description: "Add your own data to attestation JWT tokens"
+---
+
+Custom claims let you embed additional data in the JWT returned by attestation. Your backend reads these claims to make authorization decisions without extra API calls.
+
+## Claim types
+
+| Type | Description | Example |
+|------|-------------|---------|
+| **Static** | Fixed value for all devices | `"app_version": "2.0"` |
+| **Conditional** | Value based on device properties | Risk score > 50 → `"restricted": true` |
+| **Dynamic** | Computed from expressions | `"days_since_first_seen": 42` |
+| **External** | Fetched from your API at attestation time | User subscription status |
+
+External claims are available on Enterprise plans only.
+
+## Managing claims
+
+Claims are managed from the [dashboard](https://grantiva.io/dashboard) or via the API.
+
+### Dashboard
+
+Go to **Settings > Custom Claims** to create, edit, reorder, and test claims.
+
+### API
+
+```bash
+# Create a claim
+curl -X POST https://grantiva.io/api/v1/claims \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "claimKey": "user_tier",
+    "claimName": "User Tier",
+    "claimType": "static",
+    "dataType": "string",
+    "staticValue": "premium"
+  }'
+```
+
+## Reading claims
+
+Claims appear in the attestation result:
+
+```swift
+let result = try await grantiva.validateAttestation()
+
+if let tier = result.customClaims["user_tier"] as? String {
+    print("User tier: \(tier)")
+}
+```
+
+And in the decoded JWT on your backend:
+
+```json
+{
+  "custom_claims": {
+    "user_tier": "premium",
+    "restricted": false
+  }
+}
+```
+
+## Tier limits
+
+| Tier | Max claims |
+|------|-----------|
+| Free | 5 |
+| Pro | 10 |
+| Business | 15 |
+| Enterprise | 20 |
+
+## Testing claims
+
+Use the claim test endpoint to preview how a claim evaluates without performing a real attestation:
+
+```bash
+curl -X POST https://grantiva.io/api/v1/claims/test \
+  -H "Authorization: Bearer YOUR_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "claimConfiguration": { "claimKey": "test", "claimType": "conditional", ... },
+    "testContext": {
+      "deviceProfile": { "riskScore": 75, "jailbreakDetected": true }
+    }
+  }'
+```

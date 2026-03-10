@@ -1,0 +1,86 @@
+---
+title: "VRT Baselines"
+description: "Manage baseline images for visual regression testing"
+---
+
+## List baselines
+
+```
+GET /api/v1/vrt/baselines/:project/:branch
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-API-Key` | Yes | Your API key |
+
+### Response
+
+```json
+{
+  "screens": ["Home", "Profile", "Settings", "Login"]
+}
+```
+
+---
+
+## Download baseline
+
+```
+GET /api/v1/vrt/baselines/:project/:branch/:screen
+```
+
+Returns PNG image data.
+
+---
+
+## Upload baseline
+
+```
+POST /api/v1/vrt/baselines/:project/:branch/:screen
+```
+
+Upload a PNG image as the new baseline for a screen.
+
+### Body
+
+Binary PNG data.
+
+### Response
+
+`200 OK`
+
+---
+
+## Delete baseline
+
+```
+DELETE /api/v1/vrt/baselines/:project/:branch/:screen
+```
+
+### Response
+
+`204 No Content`
+
+---
+
+## Promote baselines
+
+Copy baselines from one branch to another.
+
+```
+POST /api/v1/vrt/baselines/:project/:branch/promote
+```
+
+### Body
+
+```json
+{
+  "from_branch": "feature/new-ui"
+}
+```
+
+### Response
+
+`200 OK`

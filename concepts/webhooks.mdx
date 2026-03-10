@@ -1,0 +1,77 @@
+---
+title: "Webhooks"
+description: "Receive real-time notifications for device and attestation events"
+---
+
+Webhooks send HTTP POST requests to your server when events occur in Grantiva. Available on **Business and Enterprise** plans.
+
+## Events
+
+| Event | Description |
+|-------|-------------|
+| `device.new` | First attestation from a new device |
+| `device.high_risk` | Device risk score exceeds your threshold |
+| `device.attestation_failed` | A device fails attestation validation |
+| `attestation.anomaly` | Unusual attestation pattern detected |
+
+## Setup
+
+Create webhook endpoints from the dashboard under **Settings > Webhooks**.
+
+1. Enter your endpoint URL (must be HTTPS)
+2. Select which events to subscribe to
+3. Save — Grantiva generates a signing secret (`whsec_...`)
+
+## Payload format
+
+```json
+{
+  "event": "device.high_risk",
+  "timestamp": "2025-03-10T12:00:00Z",
+  "data": {
+    "device_id": "abc123",
+    "risk_score": 82,
+    "jailbreak_detected": true,
+    "device_model": "iPhone15,2",
+    "os_version": "18.0"
+  }
+}
+```
+
+## Verifying signatures
+
+Every webhook request includes an `X-Grantiva-Signature` header containing an HMAC-SHA256 signature of the request body, signed with your endpoint's secret.
+
+```python
+import hmac
+import hashlib
+
+def verify_webhook(body: bytes, signature: str, secret: str) -> bool:
+    expected = hmac.new(
+        secret.encode(),
+        body,
+        hashlib.sha256
+    ).hexdigest()
+    return hmac.compare_digest(f"sha256={expected}", signature)
+```
+
+```swift
+import Crypto
+
+func verifyWebhook(body: Data, signature: String, secret: String) -> Bool {
+    let key = SymmetricKey(data: Data(secret.utf8))
+    let mac = HMAC<SHA256>.authenticationCode(for: body, using: key)
+    let expected = "sha256=" + mac.map { String(format: "%02x", $0) }.joined()
+    return expected == signature
+}
+```
+
+Always verify signatures before processing webhook payloads.
+
+## Retries
+
+Failed deliveries (non-2xx response or timeout) are retried up to **3 times** with exponential backoff. You can view delivery history and response details in the dashboard.
+
+## Testing
+
+Send a test event from the webhook detail page in the dashboard. This fires a `webhook.test` event to verify your endpoint is reachable and correctly verifying signatures.

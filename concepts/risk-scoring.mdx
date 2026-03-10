@@ -1,0 +1,79 @@
+---
+title: "Risk Scoring"
+description: "Understanding device risk scores and how to use them"
+---
+
+Every attestation returns a risk score from 0 to 100.
+
+## Score ranges
+
+| Range | Level | Description |
+|-------|-------|-------------|
+| 0–20 | Low | Trusted device. Stock OS, legitimate app, normal behavior. |
+| 21–50 | Medium | Some risk indicators. May warrant additional verification. |
+| 51–75 | High | Significant risk. Consider blocking sensitive operations. |
+| 76–100 | Critical | Likely compromised. Block access or require re-verification. |
+
+## Risk factors
+
+The score considers multiple signals:
+
+- **Jailbreak detection** — Is the device jailbroken or rooted?
+- **Device integrity** — Does the attestation pass Apple's checks?
+- **Attestation history** — Is this device's behavior consistent?
+- **Anomaly detection** — Unusual patterns (rapid attestations, geographic jumps, etc.)
+- **Device age** — First-time vs. returning devices
+- **OS version** — Known vulnerable OS versions
+
+## Using risk scores
+
+### In your app
+
+```swift
+let result = try await grantiva.validateAttestation()
+let score = result.deviceIntelligence.riskScore
+
+switch score {
+case 0...20:
+    // Trusted — full access
+    proceedNormally()
+case 21...50:
+    // Medium — maybe require extra verification
+    requestAdditionalAuth()
+case 51...75:
+    // High risk — limit functionality
+    limitAccess()
+default:
+    // Critical — block
+    blockAccess()
+}
+```
+
+### On your backend
+
+Decode the JWT to read the risk score:
+
+```json
+{
+  "device_intelligence": {
+    "risk_score": 15,
+    "jailbreak_detected": false,
+    "device_integrity": "valid"
+  }
+}
+```
+
+## Webhooks
+
+On Business and Enterprise plans, webhooks fire for risk-related events:
+
+- `device.high_risk` — A device exceeds your risk threshold
+- `device.new` — First attestation from a new device
+- `device.attestation_failed` — A device fails attestation
+- `attestation.anomaly` — Unusual attestation pattern detected
+
+See [Webhooks](/concepts/webhooks) for setup.
+
+## Dashboard analytics
+
+The analytics dashboard shows risk distribution, high-risk device trends, and jailbreak detection rates. See [Analytics](/dashboard/analytics).

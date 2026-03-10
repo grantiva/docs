@@ -1,97 +1,58 @@
 ---
 title: "Introduction"
-description: "Welcome to the new home for your documentation"
+description: "Device attestation and intelligence for iOS developers"
 ---
 
-## Setting up
+Grantiva verifies devices using Apple's App Attest API, issues JWT tokens with device intelligence, and provides risk scoring. No client-side API keys needed — your app is identified automatically by Bundle ID and Team ID.
 
-Get your documentation site up and running in minutes.
+## What you can do with Grantiva
 
-<Card
-  title="Start here"
-  icon="rocket"
-  href="/quickstart"
-  horizontal
->
-  Follow our three step quickstart guide.
+<CardGroup cols={2}>
+  <Card title="Device Attestation" icon="shield-check">
+    Verify device integrity using Apple's App Attest. Block jailbroken, emulated, and tampered devices.
+  </Card>
+  <Card title="Risk Scoring" icon="gauge-high">
+    Get a 0–100 risk score for every device. Set thresholds to block, challenge, or allow requests.
+  </Card>
+  <Card title="Feature Flags" icon="flag">
+    Remotely toggle features per environment. Boolean, string, number, and JSON flag types.
+  </Card>
+  <Card title="In-App Feedback" icon="message">
+    Feature requests with voting, comments, and support tickets — all from inside your app.
+  </Card>
+  <Card title="Visual Regression Testing" icon="image">
+    Catch UI regressions before they ship. Pixel and perceptual diffing with CI integration.
+  </Card>
+  <Card title="Custom JWT Claims" icon="key">
+    Add static, conditional, or dynamic claims to attestation tokens. Up to 20 per tenant.
+  </Card>
+</CardGroup>
+
+## Get started
+
+<Card title="Quick Start" icon="rocket" href="/quickstart" horizontal>
+  Add Grantiva to your iOS app in under 5 minutes.
 </Card>
 
-## Make it yours
+## How it works
 
-Design a docs site that looks great and empowers your users.
+1. **Your app requests a challenge** from the Grantiva server
+2. **App Attest creates an attestation** on the device using Apple's framework
+3. **Grantiva validates the attestation** and scores the device
+4. **A signed JWT token is returned** with device intelligence and custom claims
+5. **Your backend verifies the token** to make trust decisions
 
-<Columns cols={2}>
-  <Card
-    title="Edit locally"
-    icon="pen-to-square"
-    href="/development"
-  >
-    Edit your docs locally and preview them in real time.
-  </Card>
-  <Card
-    title="Customize your site"
-    icon="palette"
-    href="/essentials/settings"
-  >
-    Customize the design and colors of your site to match your brand.
-  </Card>
-    <Card
-    title="Set up navigation"
-    icon="map"
-    href="/essentials/navigation"
-  >
-    Organize your docs to help users find what they need and succeed with your product.
-  </Card>
-  <Card
-    title="API documentation"
-    icon="terminal"
-    href="/api-reference/introduction"
-  >
-    Auto-generate API documentation from OpenAPI specifications.
-  </Card>
-</Columns>
+No API keys are sent from the client. The server identifies your app by its Bundle ID and Team ID, which are sent automatically by the SDK.
 
-## Create beautiful pages
+## Pricing
 
-Everything you need to create world-class documentation.
+| | Free | Pro | Business | Enterprise |
+|---|---|---|---|---|
+| Monthly active devices | 1,000 | 25,000 | 250,000 | Unlimited |
+| Price | $0 | $29/mo | $149/mo | $899/mo |
+| Feature flags | 5 | 25 | 100 | Unlimited |
+| Custom claims | 5 | 10 | 15 | 20 |
+| Webhooks | — | — | Yes | Yes |
+| Support | Community | Email | Priority | Dedicated |
 
-<Columns cols={2}>
-  <Card
-    title="Write with MDX"
-    icon="pen-fancy"
-    href="/essentials/markdown"
-  >
-    Use MDX to style your docs pages.
-  </Card>
-  <Card
-    title="Code samples"
-    icon="code"
-    href="/essentials/code"
-  >
-    Add sample code to demonstrate how to use your product.
-  </Card>
-  <Card
-    title="Images"
-    icon="image"
-    href="/essentials/images"
-  >
-    Display images and other media.
-  </Card>
-  <Card
-    title="Reusable snippets"
-    icon="recycle"
-    href="/essentials/reusable-snippets"
-  >
-    Write once and reuse across your docs.
-  </Card>
-</Columns>
-
-## Need inspiration?
-
-<Card
-  title="See complete examples"
-  icon="stars"
-  href="https://mintlify.com/customers"
->
-  Browse our showcase of exceptional documentation sites.
-</Card>
+Flat monthly pricing. No per-attestation fees or overages.

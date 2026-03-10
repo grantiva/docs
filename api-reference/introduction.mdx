@@ -1,33 +1,69 @@
 ---
-title: 'Introduction'
-description: 'Example section for showcasing API endpoints'
+title: "API Reference"
+description: "Complete reference for the Grantiva REST API"
 ---
 
-<Note>
-  If you're not looking to build API reference documentation, you can delete
-  this section by removing the api-reference folder.
-</Note>
+The Grantiva API is organized around REST. All requests and responses use JSON. The base URL is:
 
-## Welcome
+```
+https://grantiva.io/api/v1/
+```
 
-There are two ways to build API documentation: [OpenAPI](https://mintlify.com/docs/api-playground/openapi/setup) and [MDX components](https://mintlify.com/docs/api-playground/mdx/configuration). For the starter kit, we are using the following OpenAPI specification.
+## Health check
 
-<Card
-  title="Plant Store Endpoints"
-  icon="leaf"
-  href="https://github.com/mintlify/starter/blob/main/api-reference/openapi.json"
->
-  View the OpenAPI specification file
-</Card>
-
-## Authentication
-
-All API endpoints are authenticated using Bearer tokens and picked up from the specification file.
+```bash
+curl https://grantiva.io/health
+```
 
 ```json
-"security": [
-  {
-    "bearerAuth": []
+{
+  "status": "healthy",
+  "timestamp": "2025-03-10T12:00:00Z"
+}
+```
+
+## Errors
+
+All errors return a consistent format:
+
+```json
+{
+  "error": "not_found",
+  "message": "Resource not found"
+}
+```
+
+| Status | Description |
+|--------|-------------|
+| `400` | Bad request — invalid input |
+| `401` | Unauthorized — missing or invalid authentication |
+| `403` | Forbidden — insufficient permissions or inactive tenant |
+| `404` | Not found |
+| `409` | Conflict — duplicate resource |
+| `429` | Rate limited |
+| `500` | Server error |
+
+## Rate limiting
+
+Rate limits vary by plan. When exceeded, the API returns `429 Too Many Requests`. Retry after the delay indicated in the response.
+
+## Pagination
+
+List endpoints support pagination:
+
+```
+?page=1&per=20
+```
+
+Responses include metadata:
+
+```json
+{
+  "items": [...],
+  "metadata": {
+    "page": 1,
+    "per": 20,
+    "total": 142
   }
-]
+}
 ```

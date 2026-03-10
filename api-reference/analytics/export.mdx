@@ -1,0 +1,43 @@
+---
+title: "Export"
+description: "Export analytics data as CSV or JSON"
+---
+
+## Request
+
+```
+GET /api/v1/analytics/export
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-API-Key` | Yes | Your API key |
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `type` | `string` | `csv` | `csv` or `json` |
+| `data` | `string` | `devices` | `devices` or `events` |
+| `period` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d` |
+
+## Example
+
+```bash
+# Export device data as CSV
+curl "https://grantiva.io/api/v1/analytics/export?type=csv&data=devices&period=30d" \
+  -H "X-API-Key: aat_your_api_key" \
+  -o devices.csv
+
+# Export attestation events as JSON
+curl "https://grantiva.io/api/v1/analytics/export?type=json&data=events&period=7d" \
+  -H "X-API-Key: aat_your_api_key" \
+  -o events.json
+```
+
+## Response
+
+- **CSV**: File download with headers (Content-Type: text/csv)
+- **JSON**: Array of objects

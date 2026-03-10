@@ -1,0 +1,132 @@
+---
+title: "VRT Quick Start"
+description: "Catch visual regressions before they ship with the Grantiva CLI"
+---
+
+## 1. Install the CLI
+
+```bash
+brew install grantiva/tap/grantiva
+```
+
+Verify your environment:
+
+```bash
+grantiva doctor
+```
+
+## 2. Authenticate
+
+```bash
+grantiva auth login
+```
+
+This opens your browser for login. For CI, use an API key:
+
+```bash
+grantiva auth login --api-key YOUR_API_KEY
+```
+
+## 3. Initialize your project
+
+```bash
+cd /path/to/your/xcode/project
+grantiva init
+```
+
+This creates `grantiva.yml` with auto-detected scheme and simulator settings.
+
+## 4. Define your screens
+
+Edit `grantiva.yml` to list the screens you want to test:
+
+```yaml
+scheme: MyApp
+simulator: iPhone 16
+
+screens:
+  - name: Home
+    path: launch
+
+  - name: Profile
+    path:
+      - tap: "Profile"
+      - wait: 1
+
+  - name: Settings
+    path:
+      - tap: "Settings"
+      - wait: 1
+```
+
+## 5. Capture baselines
+
+Take initial screenshots:
+
+```bash
+grantiva diff capture
+```
+
+Approve them as baselines:
+
+```bash
+grantiva diff approve
+```
+
+## 6. Run comparisons
+
+After making changes, compare against baselines:
+
+```bash
+grantiva diff compare
+```
+
+Or run the full pipeline (build + capture + compare + upload):
+
+```bash
+grantiva ci run
+```
+
+## 7. Add to CI
+
+```yaml
+# .github/workflows/vrt.yml
+name: Visual Regression
+on: pull_request
+
+jobs:
+  vrt:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: brew install grantiva/tap/grantiva
+      - name: Run VRT
+        env:
+          GRANTIVA_API_KEY: ${{ secrets.GRANTIVA_API_KEY }}
+        run: grantiva ci run
+```
+
+Results are posted as a GitHub Check Run on your pull request.
+
+## How diffing works
+
+Each screen is compared using two metrics:
+
+| Metric | Default threshold | Description |
+|--------|------------------|-------------|
+| Pixel diff | 2% | Percentage of pixels that differ |
+| Perceptual distance | 5.0 | CIE76 color space distance (more human-aware) |
+
+A screen fails if either threshold is exceeded. Adjust in `grantiva.yml`:
+
+```yaml
+diff:
+  threshold: 0.01          # Stricter: 1% pixel diff
+  perceptual_threshold: 3.0 # Stricter perceptual distance
+```
+
+## Next steps
+
+- [CLI Commands reference](/cli/commands)
+- [Configuration reference](/cli/configuration)
+- [CI Integration guide](/cli/ci-integration)

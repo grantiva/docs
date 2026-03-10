@@ -1,0 +1,46 @@
+---
+title: "Dashboard Overview"
+description: "Manage your apps, team, and settings from the Grantiva dashboard"
+---
+
+The Grantiva dashboard at [grantiva.io/dashboard](https://grantiva.io/dashboard) is where you manage your apps, view analytics, configure settings, and invite team members.
+
+## Getting started
+
+After signing up, you'll land on the onboarding page to add your first app. You'll need:
+
+- **App name** — A display name for your app
+- **Apple Team ID** — From your Apple Developer account
+- **Bundle ID** — Your app's bundle identifier (e.g., `com.yourcompany.yourapp`)
+
+## Navigation
+
+| Section | Description |
+|---------|-------------|
+| **Dashboard** | At-a-glance metrics: total devices, attestations, risk distribution |
+| **Analytics** | Detailed charts: attestation trends, device models, OS versions, MAD usage |
+| **Settings** | App configuration: name, Team ID, Bundle ID, API keys |
+| **Account Settings** | Account name, billing, plan management |
+| **Team** | Invite and manage team members with role-based access |
+| **Webhooks** | Create and manage webhook endpoints (Business+) |
+| **Audit Log** | Track security-relevant actions across your account |
+| **Profile** | Your email, password, and passkey management |
+
+## Roles
+
+| Role | Permissions |
+|------|------------|
+| **Owner** | Full access. Can delete the account. |
+| **Admin** | Manage members, settings, and API keys. |
+| **Member** | Create and manage projects. |
+| **Viewer** | Read-only access to dashboard and analytics. |
+
+## API keys
+
+The dashboard shows your **server-to-server API keys**. These are for backend integrations (analytics API, VRT CLI, etc.) — not for embedding in your iOS app.
+
+Key prefixes:
+- `aat_` — Organization API keys
+- `gpat_` — Personal API keys
+
+Regenerate keys from **Settings** if compromised.

@@ -1,0 +1,82 @@
+---
+title: "User Identity"
+description: "Associate user context with Grantiva for personalized flags and feedback"
+---
+
+By default, Grantiva identifies devices anonymously. You can optionally associate a user identity for:
+
+- **Feature flags** targeted by user properties
+- **Feedback** that persists across devices for the same user
+- **Analytics** grouped by user rather than device
+
+## Identify a user
+
+```swift
+await grantiva.identify(UserContext(
+    userId: "user_123",
+    properties: [
+        "plan": "premium",
+        "country": "US",
+        "beta_tester": "true"
+    ]
+))
+```
+
+Or with just a user ID:
+
+```swift
+await grantiva.identify("user_123")
+```
+
+All services (feedback, flags) automatically use this context after identification. Caches are cleared on identity change so services re-fetch with the new context.
+
+## UserContext
+
+```swift
+UserContext(
+    userId: String,
+    properties: [String: String] = [:]
+)
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `userId` | `String` | Stable unique identifier for the user |
+| `properties` | `[String: String]` | Custom key-value pairs for targeting |
+
+Properties are used for feature flag targeting and segmentation. Common examples:
+
+- `"plan"`: `"free"`, `"pro"`, `"business"`
+- `"country"`: `"US"`, `"DE"`, `"JP"`
+- `"beta_tester"`: `"true"`
+- `"company_size"`: `"50"`
+
+## Device context (automatic)
+
+The SDK automatically collects device context — you don't need to set this:
+
+```swift
+grantiva.currentUserContext?.device.appBundleId    // "com.yourapp"
+grantiva.currentUserContext?.device.appVersion      // "2.1.0"
+grantiva.currentUserContext?.device.deviceModel     // "iPhone15,2"
+grantiva.currentUserContext?.device.osVersion       // "18.0"
+grantiva.currentUserContext?.device.locale          // "en_US"
+grantiva.currentUserContext?.device.environment     // "device" or "simulator"
+```
+
+## Clear identity
+
+Call on user logout:
+
+```swift
+await grantiva.clearIdentity()
+```
+
+Services fall back to device-based identity. Feedback submitted before logout remains associated with the user.
+
+## Read current identity
+
+```swift
+grantiva.currentUserId       // String? — current user ID
+grantiva.currentUserContext   // UserContext? — full context
+```

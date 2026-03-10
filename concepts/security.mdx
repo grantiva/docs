@@ -1,0 +1,79 @@
+---
+title: "Security"
+description: "How Grantiva protects your app and your users' data"
+---
+
+## No client-side secrets
+
+Unlike most SDKs, Grantiva does not embed API keys in your app binary. Your app is identified by its **Bundle ID** and **Team ID** — both are public, non-sensitive values already present in every iOS app.
+
+This means there are no secrets to extract from your IPA, no keys to rotate after a leak, and no risk of credential stuffing from reverse-engineered apps.
+
+## Cryptographic attestation
+
+Device verification uses Apple's [App Attest](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity) framework:
+
+1. Grantiva issues a one-time cryptographic challenge
+2. The device creates an attestation using Apple's secure enclave
+3. Grantiva validates the attestation against Apple's servers
+4. A signed JWT is returned only after successful validation
+
+Challenges expire quickly and cannot be reused, preventing replay attacks.
+
+## Signed JWT tokens
+
+Attestation tokens are signed JWTs containing:
+
+- Device identity and integrity status
+- Risk score and jailbreak detection
+- Custom claims you've configured
+- Expiration timestamp
+
+Your backend verifies the JWT signature to ensure it was issued by Grantiva and hasn't been tampered with.
+
+## Webhook signatures
+
+All webhook payloads are signed with HMAC-SHA256 using your endpoint's secret. The signature is sent in the `X-Grantiva-Signature` header as `sha256=<hex-digest>`.
+
+Always verify signatures before processing webhook payloads. See [Webhooks](/concepts/webhooks) for implementation examples.
+
+## API key scoping
+
+| Key type | Prefix | Scope |
+|----------|--------|-------|
+| Organization key | `aat_` | Server-to-server operations for the org |
+| Personal key | `gpat_` | Scoped to a single user |
+
+API keys are for backend integrations only — never embed them in client apps.
+
+## Data handling
+
+- **Attestation data** is stored per-tenant and scoped to your account. No cross-tenant data access is possible.
+- **Device identifiers** are derived from App Attest key IDs, not hardware identifiers. They cannot be used to track users across apps.
+- **No PII is collected** by the SDK. Device model, OS version, and app version are the only device properties sent.
+- **Support ticket emails** are optional and stored only for reply notifications.
+
+## Multi-tenancy isolation
+
+All data is scoped to your tenant at the database level. Every query filters by tenant ID. There is no shared data between tenants.
+
+## Role-based access
+
+Dashboard access is controlled by roles:
+
+| Role | Access level |
+|------|-------------|
+| Owner | Full access including account deletion |
+| Admin | Manage members, settings, API keys |
+| Member | Create and manage projects |
+| Viewer | Read-only |
+
+All role changes and security-relevant actions are recorded in the [audit log](/dashboard/overview).
+
+## Transport security
+
+All communication between the SDK and Grantiva servers uses TLS 1.2+. The SDK enforces certificate validation — no certificate pinning bypass is possible.
+
+## Responsible disclosure
+
+If you discover a security vulnerability, please email [security@grantiva.io](mailto:security@grantiva.io). We take all reports seriously and will respond promptly.

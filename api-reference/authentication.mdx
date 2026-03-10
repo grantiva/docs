@@ -1,0 +1,64 @@
+---
+title: "Authentication"
+description: "How to authenticate with the Grantiva API"
+---
+
+Different API endpoints use different authentication methods depending on the caller.
+
+## SDK / Mobile app
+
+The iOS SDK authenticates using **Bundle ID + Team ID** headers. No API keys are sent from the device.
+
+```
+X-Bundle-ID: com.yourapp.example
+X-Team-ID: ABBM6U9RM5
+```
+
+These headers are sent automatically by the SDK. Used by: Attestation, Feedback, Support, Feature Flags.
+
+## Server-to-server
+
+For backend integrations (analytics, VRT CLI), use an **API key**:
+
+```bash
+# Header style
+curl -H "X-API-Key: aat_your_api_key" https://grantiva.io/api/v1/analytics/dashboard
+
+# Or Bearer style
+curl -H "Authorization: Bearer aat_your_api_key" https://grantiva.io/api/v1/analytics/dashboard
+```
+
+API keys are created in the dashboard under **Settings**.
+
+| Prefix | Type |
+|--------|------|
+| `aat_` | Organization API key |
+| `gpat_` | Personal API key |
+| `grantiva_` | Legacy key format |
+
+## JWT token
+
+After successful attestation, the SDK receives a JWT token. Protected endpoints require this token:
+
+```bash
+curl -H "Authorization: Bearer eyJhbGciOi..." https://grantiva.io/api/v1/heartbeat
+```
+
+## Admin API
+
+For internal admin operations:
+
+```bash
+curl -H "X-Admin-API-Key: your_admin_key" https://grantiva.io/admin/v1/tenants
+# Or
+curl -H "Authorization: Admin your_admin_key" https://grantiva.io/admin/v1/tenants
+```
+
+## Summary
+
+| Endpoint group | Auth method | Who uses it |
+|---------------|-------------|-------------|
+| Attestation, Feedback, Flags | Bundle ID + Team ID headers | iOS SDK |
+| Analytics, VRT | API key | Your backend, CLI |
+| Protected routes | JWT token | iOS SDK (post-attestation) |
+| Admin | Admin API key | Internal tooling |

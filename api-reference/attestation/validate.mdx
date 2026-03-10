@@ -1,0 +1,80 @@
+---
+title: "Validate Attestation"
+description: "Submit an attestation object for validation and receive a JWT token"
+---
+
+<Note>This endpoint is called automatically by the SDK. You typically don't need to call it directly.</Note>
+
+## Request
+
+```
+POST /api/v1/attestation/validate
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+
+### Body
+
+```json
+{
+  "challenge": "a1b2c3d4e5f6...",
+  "keyId": "device-key-id",
+  "attestationObject": "base64-encoded-attestation",
+  "clientDataHash": "base64-encoded-hash",
+  "bundleId": "com.yourapp.example",
+  "teamId": "ABBM6U9RM5",
+  "deviceModel": "iPhone15,2",
+  "osVersion": "18.0",
+  "appVersion": "2.1.0",
+  "appBuildNumber": "42",
+  "platform": "iOS"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `challenge` | `string` | Yes | Challenge from the challenge endpoint |
+| `keyId` | `string` | Yes | App Attest key identifier |
+| `attestationObject` | `string` | Yes | Base64-encoded attestation object |
+| `clientDataHash` | `string` | Yes | Base64-encoded client data hash |
+| `bundleId` | `string` | Yes | App bundle identifier |
+| `teamId` | `string` | Yes | Apple Team ID |
+| `deviceModel` | `string` | No | Device model identifier |
+| `osVersion` | `string` | No | OS version |
+| `appVersion` | `string` | No | App version |
+| `appBuildNumber` | `string` | No | Build number |
+| `platform` | `string` | No | Platform (iOS, macOS) |
+
+## Response
+
+```json
+{
+  "isValid": true,
+  "token": "eyJhbGciOi...",
+  "expiresAt": "2025-03-11T12:00:00Z",
+  "deviceIntelligence": {
+    "deviceId": "abc123",
+    "riskScore": 12,
+    "deviceIntegrity": "valid",
+    "jailbreakDetected": false,
+    "attestationCount": 5,
+    "lastAttestationDate": "2025-03-09T10:00:00Z"
+  },
+  "customClaims": {
+    "user_tier": "premium"
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `isValid` | `boolean` | Whether the device passed attestation |
+| `token` | `string` | Signed JWT token |
+| `expiresAt` | `string` | Token expiration (ISO 8601) |
+| `deviceIntelligence` | `object` | Device risk and integrity data |
+| `customClaims` | `object` | Your configured custom claims |

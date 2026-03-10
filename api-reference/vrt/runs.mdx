@@ -1,0 +1,131 @@
+---
+title: "VRT Runs"
+description: "Create, complete, and query visual regression test runs"
+---
+
+## Create a run
+
+```
+POST /api/v1/vrt/runs/:project
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-API-Key` | Yes | Your API key |
+
+### Body (multipart/form-data)
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `branch` | `string` | Yes | Git branch name |
+| `commit_sha` | `string` | No | Git commit SHA |
+| `trigger` | `string` | Yes | What triggered the run (e.g., "ci", "manual") |
+| `duration` | `double` | No | Run duration in seconds |
+| `screens` | `json` | No | Screen metadata array |
+| `captures` | `file[]` | No | Screenshot PNG files |
+| `diffs` | `file[]` | No | Diff image PNG files |
+
+### Response
+
+```json
+{
+  "run_id": "uuid",
+  "status": "passed",
+  "url": "https://grantiva.io/dashboard/vrt/runs/uuid",
+  "screen_count": 8,
+  "passed_count": 8,
+  "failed_count": 0,
+  "new_count": 0
+}
+```
+
+---
+
+## Complete a run
+
+```
+PATCH /api/v1/vrt/runs/:project/:runId
+```
+
+Upload final results (screens, captures, diffs) to complete a running test.
+
+---
+
+## List runs
+
+```
+GET /api/v1/vrt/runs/:project
+```
+
+### Response
+
+```json
+{
+  "runs": [
+    {
+      "id": "uuid",
+      "branch": "main",
+      "commit_sha": "abc123",
+      "status": "passed",
+      "screen_count": 8,
+      "passed_count": 8,
+      "failed_count": 0,
+      "created_at": "2025-03-10T12:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Get run details
+
+```
+GET /api/v1/vrt/runs/:project/:runId
+```
+
+### Response
+
+```json
+{
+  "run": { ... },
+  "screens": [
+    {
+      "name": "Home",
+      "status": "passed",
+      "pixel_diff": 0.001,
+      "perceptual_distance": 1.2
+    }
+  ],
+  "logs": "Build output..."
+}
+```
+
+---
+
+## Download images
+
+```
+GET /api/v1/vrt/runs/:project/:runId/screens/:screen/capture
+GET /api/v1/vrt/runs/:project/:runId/screens/:screen/diff
+```
+
+Returns PNG image data.
+
+---
+
+## Append logs
+
+```
+POST /api/v1/vrt/runs/:project/:runId/logs
+```
+
+### Body
+
+```json
+{
+  "lines": "Log output to append..."
+}
+```

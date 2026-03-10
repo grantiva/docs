@@ -1,0 +1,67 @@
+---
+title: "Installation"
+description: "Install the Grantiva CLI for visual regression testing"
+---
+
+## Homebrew
+
+```bash
+brew install grantiva/tap/grantiva
+```
+
+## From source
+
+```bash
+git clone https://github.com/grantiva/cli.git
+cd cli
+swift build -c release
+cp .build/release/grantiva /usr/local/bin/grantiva
+```
+
+## Requirements
+
+- macOS 15+
+- Xcode 16+
+- Swift 6.1+
+
+## Verify installation
+
+```bash
+grantiva doctor
+```
+
+This checks your environment: macOS version, Xcode installation, Swift version, simulator availability, and command-line tools.
+
+## Authenticate
+
+### Browser login (interactive)
+
+```bash
+grantiva auth login
+```
+
+Opens your browser for login. Credentials are saved to `~/.grantiva/auth.json`.
+
+### API key (CI/headless)
+
+```bash
+grantiva auth login --api-key YOUR_API_KEY
+```
+
+Or use environment variables:
+
+```bash
+export GRANTIVA_API_KEY="your-api-key"
+```
+
+### Check auth status
+
+```bash
+grantiva auth status
+```
+
+### Logout
+
+```bash
+grantiva auth logout
+```

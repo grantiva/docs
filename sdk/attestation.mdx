@@ -1,0 +1,119 @@
+---
+title: "Attestation"
+description: "Validate devices using Apple App Attest and receive signed JWT tokens"
+---
+
+## Validate a device
+
+```swift
+let result = try await grantiva.validateAttestation()
+```
+
+This performs the full attestation flow:
+
+1. Requests a one-time challenge from the server
+2. Generates or retrieves an attestation key via Apple's App Attest
+3. Creates an attestation object on-device
+4. Sends it to the Grantiva server for validation
+5. Returns a signed JWT with device intelligence
+
+### AttestationResult
+
+```swift
+result.isValid              // Bool — whether the device passed
+result.token                // String — signed JWT token
+result.expiresAt            // Date — token expiration
+result.deviceIntelligence   // DeviceIntelligence
+result.customClaims         // [String: Any] — your custom JWT claims
+```
+
+### DeviceIntelligence
+
+```swift
+result.deviceIntelligence.deviceId           // String — unique device ID
+result.deviceIntelligence.riskScore          // Int — 0 to 100
+result.deviceIntelligence.deviceIntegrity    // String — integrity status
+result.deviceIntelligence.jailbreakDetected  // Bool
+result.deviceIntelligence.attestationCount   // Int — total attestations from this device
+result.deviceIntelligence.lastAttestationDate // Date?
+```
+
+## Token caching
+
+The SDK automatically caches valid tokens. Calling `validateAttestation()` multiple times reuses the cached token until it expires, then performs a fresh attestation.
+
+```swift
+// First call — full attestation flow
+let result1 = try await grantiva.validateAttestation()
+
+// Second call — returns cached token instantly
+let result2 = try await grantiva.validateAttestation()
+```
+
+## Refresh tokens
+
+Check if the current token is still valid, and refresh if expired:
+
+```swift
+if let result = try await grantiva.refreshToken() {
+    // Token is valid or was refreshed
+    print(result.token)
+}
+```
+
+Returns `nil` if no token has been stored yet (call `validateAttestation()` first).
+
+## Check token status
+
+```swift
+// Synchronous check — does a valid token exist?
+if grantiva.isTokenValid() {
+    let token = grantiva.getCurrentToken()
+    // Use token in API requests
+}
+```
+
+## Clear stored data
+
+Force a fresh attestation on the next call:
+
+```swift
+grantiva.clearStoredData()
+```
+
+This clears cached keys and tokens from the Keychain. Useful for testing or user logout.
+
+## Use the token
+
+Send the JWT to your backend as a Bearer token:
+
+```swift
+var request = URLRequest(url: yourAPIEndpoint)
+request.setValue("Bearer \(result.token)", forHTTPHeaderField: "Authorization")
+```
+
+Your backend can decode the JWT to read:
+- Device risk score
+- Jailbreak detection status
+- Device model and OS version
+- Custom claims configured in the dashboard
+
+## Error handling
+
+```swift
+do {
+    let result = try await grantiva.validateAttestation()
+} catch GrantivaError.deviceNotSupported {
+    // App Attest unavailable (simulator, old device)
+} catch GrantivaError.networkError(let error) {
+    // Network issue — retry later
+} catch GrantivaError.validationFailed {
+    // Device failed attestation — potentially compromised
+} catch GrantivaError.challengeExpired {
+    // Challenge timed out — retry automatically
+} catch {
+    print(error.localizedDescription)
+}
+```
+
+See [Error Handling](/sdk/error-handling) for the full list of error types.

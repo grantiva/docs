@@ -1,0 +1,100 @@
+---
+title: "Feature Requests"
+description: "List and create feature requests"
+---
+
+## List feature requests
+
+```
+GET /api/v1/feedback/features
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | `int` | 1 | Page number |
+| `per` | `int` | 20 | Results per page (max 100) |
+| `sort` | `string` | — | `newest`, `oldest`, or `most_voted` |
+| `status` | `string` | — | Filter by status |
+| `voter_id` | `string` | — | Check if this user has voted |
+
+### Response
+
+```json
+{
+  "items": [
+    {
+      "id": "uuid",
+      "title": "Dark Mode Support",
+      "description": "Please add dark mode...",
+      "status": "open",
+      "voteCount": 42,
+      "hasVoted": true,
+      "commentCount": 5,
+      "createdAt": "2025-03-01T12:00:00Z",
+      "updatedAt": "2025-03-10T08:00:00Z"
+    }
+  ],
+  "metadata": {
+    "page": 1,
+    "per": 20,
+    "total": 42
+  }
+}
+```
+
+---
+
+## Create feature request
+
+```
+POST /api/v1/feedback/features
+```
+
+### Body
+
+```json
+{
+  "title": "Dark Mode Support",
+  "description": "Please add a dark mode option to reduce eye strain at night.",
+  "submitterId": "user_123",
+  "deviceHash": "optional-device-hash"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `title` | `string` | Yes | 3–200 characters |
+| `description` | `string` | Yes | 10–5,000 characters |
+| `submitterId` | `string` | Yes | User or device identifier |
+| `deviceHash` | `string` | No | Device hash for deduplication |
+
+### Response
+
+Returns the created feature request object.
+
+---
+
+## Get feature request
+
+```
+GET /api/v1/feedback/features/:featureId
+```
+
+### Query parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `voter_id` | `string` | Check if this user has voted |
+
+### Response
+
+Returns a single feature request object.

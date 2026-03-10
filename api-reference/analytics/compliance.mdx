@@ -1,0 +1,45 @@
+---
+title: "Compliance"
+description: "Get compliance and risk assessment reports"
+---
+
+## Compliance report
+
+```
+GET /api/v1/analytics/compliance
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-API-Key` | Yes | Your API key |
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `type` | `string` | `summary` | `summary` or `detailed` |
+| `period` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d` |
+
+### Response
+
+Returns a compliance report with compliant/non-compliant device counts, compliance rate, and violation details (in detailed mode).
+
+---
+
+## Risk assessment report
+
+```
+GET /api/v1/analytics/risk
+```
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `timeRange` | `string` | `7d` | Time range for assessment |
+
+### Response
+
+Returns risk distribution, trends, and high-risk device details.

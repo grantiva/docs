@@ -1,0 +1,88 @@
+---
+title: "CI Integration"
+description: "Run visual regression tests in GitHub Actions and other CI systems"
+---
+
+## GitHub Actions
+
+```yaml
+name: Visual Regression
+on: pull_request
+
+jobs:
+  vrt:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Grantiva CLI
+        run: brew install grantiva/tap/grantiva
+
+      - name: Run visual regression tests
+        env:
+          GRANTIVA_API_KEY: ${{ secrets.GRANTIVA_API_KEY }}
+        run: grantiva ci run
+```
+
+The CLI automatically posts results as a GitHub Check Run on the pull request.
+
+## Environment variables
+
+| Variable | Description |
+|----------|-------------|
+| `GRANTIVA_API_KEY` | API key for authentication (required in CI) |
+| `GRANTIVA_API_URL` | Base URL override (default: `https://grantiva.io`) |
+
+## Skip the build step
+
+If your CI already builds the app in a previous step:
+
+```yaml
+- name: Build app
+  run: xcodebuild -scheme MyApp -sdk iphonesimulator -derivedDataPath build/
+
+- name: Run VRT (skip build)
+  env:
+    GRANTIVA_API_KEY: ${{ secrets.GRANTIVA_API_KEY }}
+  run: grantiva ci run --skip-build
+```
+
+Or point to a pre-built `.app`:
+
+```bash
+grantiva ci run --app-path ./build/MyApp.app
+```
+
+## JSON output for scripting
+
+```bash
+grantiva ci run --json | jq '.failed_count'
+```
+
+Exit code is `0` if all screens pass, `1` if any fail — works with CI `if` conditions.
+
+## Approving new baselines
+
+When UI changes are intentional, approve the new screenshots:
+
+```bash
+grantiva diff approve
+```
+
+Or approve specific screens:
+
+```bash
+grantiva diff approve "Home" "Settings"
+```
+
+Approved captures become the new baselines for future comparisons.
+
+## Results
+
+After each run, the CLI outputs:
+- Run ID and dashboard URL
+- Screen-by-screen pass/fail status
+- Pixel diff percentage and perceptual distance per screen
+- Total duration
+
+Results are also visible in the Grantiva dashboard under your project.

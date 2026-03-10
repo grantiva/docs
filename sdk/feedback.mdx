@@ -1,0 +1,140 @@
+---
+title: "Feedback"
+description: "Add feature requests, voting, and support tickets to your app"
+---
+
+The feedback service lets your users submit feature requests, vote on ideas, and open support tickets — all from within your app.
+
+Access it via `grantiva.feedback`.
+
+## Feature requests
+
+### List feature requests
+
+```swift
+let requests = try await grantiva.feedback.getFeatureRequests(
+    status: .open,       // Optional: filter by status
+    sort: "votes",       // "votes", "newest", "oldest"
+    page: 1,
+    perPage: 20
+)
+```
+
+Results are cached for 2 minutes. Force a refresh:
+
+```swift
+grantiva.feedback.refreshFeatureRequests()
+let fresh = try await grantiva.feedback.getFeatureRequests()
+```
+
+### Get a single feature request
+
+```swift
+let feature = try await grantiva.feedback.getFeatureRequest(id: featureId)
+```
+
+### Submit a feature request
+
+```swift
+let request = try await grantiva.feedback.submitFeatureRequest(
+    title: "Dark Mode Support",
+    description: "Please add a dark mode option to reduce eye strain at night."
+)
+```
+
+| Field | Constraints |
+|-------|------------|
+| `title` | 3–200 characters |
+| `description` | 10–5,000 characters |
+
+### Vote
+
+Each user/device can vote once per feature request.
+
+```swift
+// Cast a vote
+try await grantiva.feedback.vote(for: featureId)
+
+// Remove a vote
+try await grantiva.feedback.removeVote(for: featureId)
+```
+
+### Comments
+
+```swift
+// List comments
+let comments = try await grantiva.feedback.getComments(for: featureId)
+
+// Add a comment
+try await grantiva.feedback.addComment(to: featureId, body: "Great idea!")
+```
+
+### FeatureRequest model
+
+```swift
+feature.id           // UUID
+feature.title        // String
+feature.description  // String
+feature.status       // FeatureRequestStatus
+feature.voteCount    // Int
+feature.hasVoted     // Bool — whether current user voted
+feature.commentCount // Int
+feature.createdAt    // Date
+```
+
+### FeatureRequestStatus
+
+`pending` | `open` | `planned` | `in_progress` | `shipped` | `declined` | `duplicate`
+
+## Support tickets
+
+### Submit a ticket
+
+```swift
+let ticket = try await grantiva.feedback.submitTicket(
+    subject: "App crashes on launch",
+    body: "After updating to v2.1, the app crashes immediately on iPhone 15...",
+    email: "user@example.com"  // Optional — for reply notifications
+)
+```
+
+| Field | Constraints |
+|-------|------------|
+| `subject` | 3–200 characters |
+| `body` | 10–5,000 characters |
+
+### List user's tickets
+
+```swift
+let tickets = try await grantiva.feedback.getUsersTickets()
+```
+
+If `grantiva.identify()` has been called, returns tickets for that user across all devices. Otherwise returns device-only tickets.
+
+### Get ticket with messages
+
+```swift
+let (ticket, messages) = try await grantiva.feedback.getTicket(id: ticketId)
+
+for message in messages {
+    print("\(message.authorType): \(message.body)")
+    // authorType is .user or .admin
+}
+```
+
+### Reply to a ticket
+
+```swift
+try await grantiva.feedback.reply(to: ticketId, body: "Thanks for looking into this!")
+```
+
+### SupportTicket model
+
+```swift
+ticket.id           // UUID
+ticket.subject      // String
+ticket.status       // TicketStatus: open, awaitingReply, resolved, closed
+ticket.priority     // TicketPriority: low, normal, high, urgent
+ticket.messageCount // Int
+ticket.createdAt    // Date
+```

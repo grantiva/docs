@@ -1,0 +1,111 @@
+---
+title: "Webhooks Quick Start"
+description: "Receive real-time notifications for device attestation events"
+---
+
+<Info>Webhooks are available on **Business** and **Enterprise** plans.</Info>
+
+## 1. Create an endpoint
+
+In the dashboard, go to **Settings > Webhooks** and click **Create Endpoint**.
+
+Enter your HTTPS endpoint URL and select which events to listen for:
+
+| Event | Description |
+|-------|-------------|
+| `device.new` | First attestation from a new device |
+| `device.high_risk` | Device exceeds risk threshold |
+| `device.attestation_failed` | Attestation validation failed |
+| `attestation.anomaly` | Unusual attestation pattern |
+
+Grantiva generates a signing secret (`whsec_...`) — save this for signature verification.
+
+## 2. Handle webhook events
+
+```javascript
+// Node.js / Express example
+const crypto = require('crypto');
+
+app.post('/webhooks/grantiva', (req, res) => {
+  // Verify signature
+  const signature = req.headers['x-grantiva-signature'];
+  const expected = 'sha256=' + crypto
+    .createHmac('sha256', process.env.WEBHOOK_SECRET)
+    .update(JSON.stringify(req.body))
+    .digest('hex');
+
+  if (signature !== expected) {
+    return res.status(401).send('Invalid signature');
+  }
+
+  // Process event
+  const { event, data } = req.body;
+
+  switch (event) {
+    case 'device.high_risk':
+      console.log(`High risk device: ${data.device_id}, score: ${data.risk_score}`);
+      blockDevice(data.device_id);
+      break;
+    case 'device.new':
+      console.log(`New device: ${data.device_id}`);
+      break;
+  }
+
+  res.sendStatus(200);
+});
+```
+
+```swift
+// Vapor example
+func handleWebhook(_ req: Request) throws -> HTTPStatus {
+    let signature = req.headers.first(name: "X-Grantiva-Signature") ?? ""
+    let body = req.body.data ?? ByteBuffer()
+
+    let key = SymmetricKey(data: Data(Environment.get("WEBHOOK_SECRET")!.utf8))
+    let mac = HMAC<SHA256>.authenticationCode(for: Data(buffer: body), using: key)
+    let expected = "sha256=" + mac.map { String(format: "%02x", $0) }.joined()
+
+    guard expected == signature else {
+        throw Abort(.unauthorized)
+    }
+
+    let payload = try req.content.decode(WebhookPayload.self)
+
+    switch payload.event {
+    case "device.high_risk":
+        // Handle high risk device
+        break
+    default:
+        break
+    }
+
+    return .ok
+}
+```
+
+## 3. Test your endpoint
+
+From the webhook detail page in the dashboard, click **Send Test Event**. This fires a `webhook.test` event to verify your endpoint is reachable.
+
+## 4. Verify it works
+
+Check the delivery log in the dashboard. Each delivery shows:
+- HTTP status code
+- Response body
+- Delivery time
+- Retry count
+
+## Retries
+
+Failed deliveries (non-2xx response or timeout) are retried up to 3 times with exponential backoff:
+
+| Attempt | Delay |
+|---------|-------|
+| 1st retry | ~1 minute |
+| 2nd retry | ~5 minutes |
+| 3rd retry | ~30 minutes |
+
+## Next steps
+
+- [Webhooks concepts](/concepts/webhooks) — signature verification in more languages
+- [Webhook API](/api-reference/vrt/runs) — programmatic webhook management

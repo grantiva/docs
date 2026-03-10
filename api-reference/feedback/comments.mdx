@@ -1,0 +1,57 @@
+---
+title: "Comments"
+description: "List and add comments on feature requests"
+---
+
+## List comments
+
+```
+GET /api/v1/feedback/features/:featureId/comments
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+
+### Response
+
+```json
+[
+  {
+    "id": "uuid",
+    "featureRequestId": "uuid",
+    "authorType": "user",
+    "body": "Great idea! I'd love this feature.",
+    "createdAt": "2025-03-10T12:00:00Z"
+  }
+]
+```
+
+---
+
+## Add a comment
+
+```
+POST /api/v1/feedback/features/:featureId/comments
+```
+
+### Body
+
+```json
+{
+  "authorId": "user_123",
+  "body": "Great idea! I'd love this feature."
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `authorId` | `string` | Yes | User or device identifier |
+| `body` | `string` | Yes | Comment text (1–2,000 characters) |
+
+### Response
+
+Returns the created comment object.

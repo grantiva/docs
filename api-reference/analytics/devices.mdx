@@ -1,0 +1,53 @@
+---
+title: "Device Details"
+description: "Get detailed device profile and attestation history"
+---
+
+## Request
+
+```
+GET /api/v1/analytics/devices/:keyId
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-API-Key` | Yes | Your API key |
+
+### Path parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `keyId` | `string` | The device's App Attest key identifier |
+
+## Response
+
+```json
+{
+  "keyId": "abc123",
+  "deviceProfile": {
+    "deviceModel": "iPhone15,2",
+    "osVersion": "18.0",
+    "appVersion": "2.1.0",
+    "riskScore": 12,
+    "jailbreakDetected": false,
+    "attestationCount": 42,
+    "firstSeenAt": "2025-01-15T10:00:00Z",
+    "lastSeenAt": "2025-03-10T12:00:00Z"
+  },
+  "recentEvents": [
+    {
+      "type": "attestation",
+      "result": "success",
+      "riskScore": 12,
+      "timestamp": "2025-03-10T12:00:00Z"
+    }
+  ],
+  "complianceStatus": {
+    "isCompliant": true,
+    "checks": []
+  },
+  "lastUpdated": "2025-03-10T12:00:00Z"
+}
+```
