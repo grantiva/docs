@@ -33,25 +33,70 @@ The CLI automatically posts results as a GitHub Check Run on the pull request.
 | `GRANTIVA_API_KEY` | API key for authentication (required in CI) |
 | `GRANTIVA_API_URL` | Base URL override (default: `https://grantiva.io`) |
 
-## Skip the build step
+## Pre-built binaries
 
-If your CI already builds the app in a previous step:
-
-```yaml
-- name: Build app
-  run: xcodebuild -scheme MyApp -sdk iphonesimulator -derivedDataPath build/
-
-- name: Run VRT (skip build)
-  env:
-    GRANTIVA_API_KEY: ${{ secrets.GRANTIVA_API_KEY }}
-  run: grantiva ci run --skip-build
-```
-
-Or point to a pre-built `.app`:
+Grantiva can consume pre-built `.app` bundles or `.ipa` archives instead of building from source. This decouples the build from the test, enabling faster and more flexible CI pipelines.
 
 ```bash
-grantiva ci run --app-path ./build/MyApp.app
+# Use a pre-built .app bundle (skips xcodebuild, still installs)
+grantiva ci run --app-file ./build/MyApp.app
+
+# Use an .ipa from a CI artifact
+grantiva ci run --app-file ./artifacts/MyApp.ipa
+
+# App is already installed on the simulator (skip build and install)
+grantiva ci run --no-build
 ```
+
+When `--app-file` is provided:
+- The `xcodebuild` step is skipped entirely
+- The binary is validated to be a simulator build (not a device build)
+- The bundle ID is derived from the binary's `Info.plist` if not specified
+- `.ipa` files are automatically extracted (`.app` from `Payload/`)
+- `scheme` is not required in `grantiva.yml`
+
+### Split build and test
+
+Separate the build and test into different CI jobs. This lets you cache build artifacts, reuse them across multiple test runs, and run visual regression on different device configurations in parallel.
+
+```yaml
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build
+        run: |
+          xcodebuild build -scheme MyApp \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build/
+      - uses: actions/upload-artifact@v4
+        with:
+          name: app-binary
+          path: build/Build/Products/Debug-iphonesimulator/MyApp.app
+
+  visual-regression:
+    needs: build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: app-binary
+          path: ./app
+      - name: Install Grantiva CLI
+        run: brew install grantiva/tap/grantiva
+      - name: Visual regression
+        env:
+          GRANTIVA_API_KEY: ${{ secrets.GRANTIVA_API_KEY }}
+        run: grantiva ci run --app-file ./app/MyApp.app
+```
+
+Benefits:
+- Build and test can be separate jobs (even separate machines)
+- Build artifacts can be cached and reused across multiple test runs
+- Visual regression doesn't re-build when only baselines changed
+- Multiple Grantiva configs (different screen sizes, locales) can run in parallel against the same binary
 
 ## JSON output for scripting
 

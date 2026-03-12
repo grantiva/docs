@@ -18,14 +18,14 @@ grantiva init --scheme MyApp --bundle-id com.example.myapp
 ## Configuration reference
 
 ```yaml
-# Required
+# Required (unless using --app-file)
 scheme: MyApp
 simulator: iPhone 16
 
 # Optional
 workspace: MyApp.xcworkspace    # If using a workspace
 project: MyApp.xcodeproj        # If not using a workspace
-bundle_id: com.example.myapp
+bundle_id: com.example.myapp    # Derived from binary if --app-file is used
 
 # Screens to capture
 screens:
@@ -41,13 +41,18 @@ screens:
     path:
       - swipe: up
       - tap: "Settings"
-      - wait: 2
+      - assert_visible: "Advanced"
+      - tap: "Advanced"
 
 # Diff thresholds
 diff:
   threshold: 0.02              # Max pixel diff % (0–1.0)
   perceptual_threshold: 5.0    # Max CIE76 color distance
 ```
+
+<Note>
+When using `--app-file` to provide a pre-built binary, `scheme` is not required. The bundle ID is derived from the binary's `Info.plist` if not specified.
+</Note>
 
 ## Screens
 
@@ -66,8 +71,10 @@ Each screen has a `name` and a `path` that describes how to navigate to it.
 - name: Settings
   path:
     - tap: "Settings"          # Tap by accessibility label
+    - type: "search query"     # Type into focused field
     - wait: 2                  # Wait N seconds
     - swipe: up                # up, down, left, right
+    - assert_visible: "Advanced" # Fail if element not visible
     - tap: "Advanced"
 ```
 
@@ -75,10 +82,65 @@ Each screen has a `name` and a `path` that describes how to navigate to it.
 |--------|-------------|
 | `launch` | Screenshot immediately after app launch |
 | `tap: "Label"` | Tap element by accessibility label |
+| `type: "text"` | Type text into the focused field |
 | `swipe: direction` | Swipe up, down, left, or right |
 | `wait: N` | Wait N seconds |
+| `assert_visible: "Label"` | Verify element is visible (fails the screen if not) |
+| `assert_not_visible: "Label"` | Verify element is not visible |
+| `run_flow: "path.yaml"` | Include steps from another YAML file |
 
 A screenshot is automatically taken at the end of each screen's path.
+
+## Maestro compatibility
+
+Grantiva can read [Maestro](https://maestro.mobile.dev) flow files as a drop-in replacement. If you have existing Maestro flows, there's no need to rewrite them.
+
+### Auto-detection
+
+Grantiva auto-detects the format when loading configuration:
+
+1. Looks for `grantiva.yml` — parses as Grantiva or Maestro format (auto-detected)
+2. If no `grantiva.yml`, looks for a `.maestro/` directory and loads all flow files
+
+### Using Maestro flows
+
+Write `grantiva.yml` in Maestro format, or place flows in `.maestro/`:
+
+```yaml
+appId: com.example.myapp
+---
+- launchApp
+- tapOn: "Sign In"
+- inputText: "user@example.com"
+- takeScreenshot: "Login"
+- tapOn: "Submit"
+- assertVisible: "Welcome"
+- takeScreenshot: "Welcome"
+```
+
+Each `takeScreenshot` becomes a named screen capture point. Commands between screenshots become navigation steps.
+
+### Supported Maestro commands
+
+| Maestro command | Grantiva mapping |
+|----------------|-----------------|
+| `tapOn` / `doubleTapOn` / `longPressOn` | `tap` (supports `text:` and `id:` selectors) |
+| `inputText` | `type` |
+| `assertVisible` | `assert_visible` |
+| `assertNotVisible` | `assert_not_visible` |
+| `scroll: {direction: down}` | `swipe: up` (direction inverted) |
+| `swipe: {start: ..., end: ...}` | `swipe` (direction derived from coordinates) |
+| `runFlow` / `runFlow: {file: ...}` | `run_flow` |
+| `extendedWaitUntil: {text: ...}` | `assert_visible` |
+| `waitForAnimationToEnd` | `wait` (timeout converted to seconds) |
+| `takeScreenshot: "name"` | Screen capture boundary |
+| `launchApp` / `stopApp` | Skipped (Grantiva handles app lifecycle) |
+
+Unsupported commands (`pressKey`, `setPermissions`, `evalScript`, `repeat`, etc.) are silently skipped.
+
+### Sub-flows
+
+Maestro sub-flows referenced via `runFlow` are also parsed in Maestro format when auto-detected. You can mix Grantiva and Maestro flow files.
 
 ## Diff thresholds
 

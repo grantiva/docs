@@ -11,7 +11,7 @@ Run the full visual regression pipeline: build, capture, compare, upload.
 
 ```bash
 grantiva ci run [--scheme SCHEME] [--simulator SIMULATOR] [--bundle-id ID]
-                [--skip-build] [--app-path PATH] [--json]
+                [--app-file PATH] [--no-build] [--json]
 ```
 
 | Flag | Description |
@@ -19,17 +19,19 @@ grantiva ci run [--scheme SCHEME] [--simulator SIMULATOR] [--bundle-id ID]
 | `--scheme` | Xcode scheme to build |
 | `--simulator` | Simulator name (e.g., "iPhone 16") |
 | `--bundle-id` | App bundle identifier |
-| `--skip-build` | Skip building, use existing DerivedData artifacts |
-| `--app-path` | Path to pre-built .app bundle (implies --skip-build) |
+| `--app-file` | Path to a pre-built `.app` bundle or `.ipa` archive (skips build) |
+| `--no-build` | Skip building and installing — assume the app is already on the simulator |
 
 **What it does:**
 1. Boots simulator
-2. Builds the app (unless skipped)
+2. Builds the app (unless `--app-file` or `--no-build` is used)
 3. Installs, launches, and starts the XCUITest driver
 4. Captures screenshots for all configured screens
 5. Compares against baselines (pixel + perceptual)
 6. Uploads results to the Grantiva dashboard
 7. Posts a GitHub Check Run with results
+
+When `--app-file` is provided, the binary is validated to be a simulator build and the bundle ID is derived from its `Info.plist` if not specified. `.ipa` archives are automatically extracted.
 
 Exit code `0` if all screens pass, `1` if any fail.
 
@@ -41,8 +43,13 @@ Capture screenshots without comparing.
 
 ```bash
 grantiva diff capture [--scheme SCHEME] [--simulator SIMULATOR]
-                      [--bundle-id ID] [--no-run] [--json]
+                      [--bundle-id ID] [--app-file PATH] [--no-build] [--json]
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--app-file` | Use a pre-built `.app` or `.ipa` instead of building |
+| `--no-build` | Skip building and installing (app must already be on simulator) |
 
 Saves `.png` files to `.grantiva/captures/`.
 
@@ -53,12 +60,16 @@ Saves `.png` files to `.grantiva/captures/`.
 Compare captures against baselines.
 
 ```bash
-grantiva diff compare [--capture] [--json]
+grantiva diff compare [--capture] [--app-file PATH] [--no-build]
+                      [--scheme SCHEME] [--simulator SIMULATOR]
+                      [--bundle-id ID] [--json]
 ```
 
 | Flag | Description |
 |------|-------------|
 | `--capture` | Capture fresh screenshots before comparing |
+| `--app-file` | Use a pre-built binary when capturing (requires `--capture`) |
+| `--no-build` | Skip build/install when capturing (requires `--capture`) |
 
 Baselines are loaded from the Grantiva server (if authenticated) or `.grantiva/baselines/` locally. Diff images for failures are saved to `.grantiva/captures/diffs/`.
 
