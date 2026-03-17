@@ -180,6 +180,10 @@
       "cursor"
     ]
   },
+  "redirects": [
+    { "source": "/sdk/ios", "destination": "/sdk/installation" },
+    { "source": "/pricing", "destination": "/#pricing" }
+  ],
   "footer": {
     "socials": {
       "x": "https://x.com/grantiva",
