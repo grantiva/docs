@@ -119,6 +119,12 @@
             ]
           },
           {
+            "group": "Webhooks",
+            "pages": [
+              "api-reference/webhooks/endpoints"
+            ]
+          },
+          {
             "group": "Visual Regression Testing",
             "pages": [
               "api-reference/vrt/runs",
