@@ -16,21 +16,21 @@ description: "Add device attestation to your iOS app in under 5 minutes"
 
 ## 1. Create an account
 
-Sign up at [grantiva.io/get-started](https://grantiva.io/get-started) with email, GitHub, or Google. Then add your first app from the dashboard — you'll need your Apple Team ID and Bundle ID.
+Sign up at [grantiva.io/login](https://grantiva.io/login) with email, GitHub, or Google. Then add your first app from the dashboard — you'll need your Apple Team ID and Bundle ID.
 
 ## 2. Add the SDK
 
 Add the Grantiva Swift package to your Xcode project:
 
 ```
-https://github.com/grantiva/sdk
+https://github.com/grantiva/GrantivaSDK
 ```
 
 Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/grantiva/sdk", from: "1.0.0")
+    .package(url: "https://github.com/grantiva/GrantivaSDK", from: "1.0.0")
 ]
 ```
 
@@ -52,7 +52,7 @@ That's it. The SDK reads your Bundle ID automatically from `Bundle.main`.
 
 ```swift
 do {
-    let result = try await grantiva.validateAttestation()
+    let result = try await grantiva.attest()
     print("Device verified: \(result.isValid)")
     print("Risk score: \(result.deviceIntelligence.riskScore)")
     // Send result.token to your backend as a Bearer token
@@ -72,7 +72,7 @@ var request = URLRequest(url: apiURL)
 request.setValue("Bearer \(result.token)", forHTTPHeaderField: "Authorization")
 ```
 
-Your backend can decode the JWT to read device intelligence and make trust decisions.
+Your backend can decode the JWT to read device intelligence and make trust decisions. See [Backend JWT Verification](/backend-verification) for working examples in Node.js, Python, and Go.
 
 ## Next steps
 
