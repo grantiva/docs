@@ -11,18 +11,7 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Blog",
-        "groups": [
-          {
-            "group": "App Attest",
-            "pages": [
-              "blog/apple-app-attest-explained"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
             "group": "Getting Started",
@@ -182,7 +171,8 @@
   },
   "redirects": [
     { "source": "/sdk/ios", "destination": "/sdk/installation" },
-    { "source": "/pricing", "destination": "/#pricing" }
+    { "source": "/pricing", "destination": "/#pricing" },
+    { "source": "/blog/:slug*", "destination": "/quickstart" }
   ],
   "footer": {
     "socials": {
