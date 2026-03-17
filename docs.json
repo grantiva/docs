@@ -63,7 +63,8 @@
               "concepts/risk-scoring",
               "concepts/custom-claims",
               "concepts/webhooks",
-              "concepts/security"
+              "concepts/security",
+              "concepts/vrt"
             ]
           },
           {
