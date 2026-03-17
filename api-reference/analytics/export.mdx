@@ -27,12 +27,12 @@ GET /api/v1/analytics/export
 
 ```bash
 # Export device data as CSV
-curl "https://grantiva.io/api/v1/analytics/export?type=csv&data=devices&period=30d" \
+curl "https://api.grantiva.io/api/v1/analytics/export?type=csv&data=devices&period=30d" \
   -H "X-API-Key: aat_your_api_key" \
   -o devices.csv
 
 # Export attestation events as JSON
-curl "https://grantiva.io/api/v1/analytics/export?type=json&data=events&period=7d" \
+curl "https://api.grantiva.io/api/v1/analytics/export?type=json&data=events&period=7d" \
   -H "X-API-Key: aat_your_api_key" \
   -o events.json
 ```

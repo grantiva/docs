@@ -22,10 +22,10 @@ For backend integrations (analytics, VRT CLI), use an **API key**:
 
 ```bash
 # Header style
-curl -H "X-API-Key: aat_your_api_key" https://grantiva.io/api/v1/analytics/dashboard
+curl -H "X-API-Key: aat_your_api_key" https://api.grantiva.io/api/v1/analytics/dashboard
 
 # Or Bearer style
-curl -H "Authorization: Bearer aat_your_api_key" https://grantiva.io/api/v1/analytics/dashboard
+curl -H "Authorization: Bearer aat_your_api_key" https://api.grantiva.io/api/v1/analytics/dashboard
 ```
 
 API keys are created in the dashboard under **Settings**.
@@ -41,7 +41,7 @@ API keys are created in the dashboard under **Settings**.
 After successful attestation, the SDK receives a JWT token. Protected endpoints require this token:
 
 ```bash
-curl -H "Authorization: Bearer eyJhbGciOi..." https://grantiva.io/api/v1/heartbeat
+curl -H "Authorization: Bearer eyJhbGciOi..." https://api.grantiva.io/api/v1/heartbeat
 ```
 
 ## Admin API
@@ -49,9 +49,9 @@ curl -H "Authorization: Bearer eyJhbGciOi..." https://grantiva.io/api/v1/heartbe
 For internal admin operations:
 
 ```bash
-curl -H "X-Admin-API-Key: your_admin_key" https://grantiva.io/admin/v1/tenants
+curl -H "X-Admin-API-Key: your_admin_key" https://api.grantiva.io/admin/v1/tenants
 # Or
-curl -H "Authorization: Admin your_admin_key" https://grantiva.io/admin/v1/tenants
+curl -H "Authorization: Admin your_admin_key" https://api.grantiva.io/admin/v1/tenants
 ```
 
 ## Summary

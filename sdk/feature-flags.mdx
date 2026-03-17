@@ -15,7 +15,7 @@ if flags["dark_mode"]?.boolValue == true {
 }
 ```
 
-Flags are cached in memory for 5 minutes by default.
+Flags are cached in memory for 5 minutes by default. See [Cache control](#cache-control) to configure the TTL.
 
 ## Typed accessors
 
@@ -61,15 +61,30 @@ Default is `.production`.
 
 ## Cache control
 
+Set the TTL at init time using `flagCacheTTL`:
+
 ```swift
-// Change cache TTL (default: 300 seconds / 5 minutes)
-grantiva.flags.cacheTTL = 60  // 1 minute
+// 30-second TTL — fast propagation for kill-switches
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", flagCacheTTL: 30)
+
+// Disable caching entirely — always fetch fresh values
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", flagCacheTTL: 0)
+
+// Default: 5 minutes
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
+```
+
+You can also update the TTL at runtime:
+
+```swift
+// Change cache TTL on the service directly
+await grantiva.flags.cacheTTL = 60  // 1 minute
 
 // Force refresh on next fetch
-grantiva.flags.refresh()
+await grantiva.flags.refresh()
 
 // Clear all cached flag data
-grantiva.flags.clearCache()
+await grantiva.flags.clearCache()
 ```
 
 The cache is automatically cleared when user identity changes via `grantiva.identify()`.
@@ -78,7 +93,7 @@ The cache is automatically cleared when user identity changes via `grantiva.iden
 
 | Tier | Max flags |
 |------|-----------|
-| Free | 5 |
-| Pro | 25 |
-| Business | 100 |
+| Free | 10 |
+| Pro | 50/app |
+| Business | 200/app |
 | Enterprise | Unlimited |

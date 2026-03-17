@@ -1,0 +1,134 @@
+---
+title: "Visual Regression Testing"
+description: "How Grantiva VRT captures, compares, and tracks UI changes across your iOS app"
+---
+
+## What is VRT?
+
+Grantiva VRT (Visual Regression Testing) catches unintended UI changes before they ship. You define the screens you care about in a YAML config file, and the CLI-driven capture engine screenshots each one on every pull request. If anything changes, the diff shows up in the dashboard and as a GitHub Check Run on the PR.
+
+**VRT is not Xcode UI testing.** You do not write XCTestCase classes or use Xcode Instruments. The CLI uses its own XCUITest driver (`grantiva-runner`) to navigate your app and take screenshots. Your existing Xcode UI tests are unaffected.
+
+## The baseline/capture/compare lifecycle
+
+Every VRT workflow follows three phases:
+
+```
+capture → compare → (approve or reject)
+```
+
+### 1. Capture
+
+The CLI builds your app, boots a simulator, and navigates through each screen defined in `grantiva.yml`. Screenshots are uploaded to the Grantiva dashboard.
+
+```bash
+grantiva diff capture
+```
+
+### 2. Compare
+
+Each new screenshot is diffed against the stored baseline using two metrics:
+
+| Metric | Default | Description |
+|--------|---------|-------------|
+| Pixel diff | 2% | Percentage of pixels that changed |
+| Perceptual distance | 5.0 | CIE76 color-space distance — more human-aware than pixel counting |
+
+A screen **fails** if either threshold is exceeded.
+
+```bash
+grantiva diff compare
+```
+
+### 3. Approve or reject
+
+Approve expected changes to update the baseline. Reject unexpected ones to block the PR.
+
+```bash
+grantiva diff approve   # Accept changes — new screenshots become the baseline
+```
+
+Rejections are visible in the dashboard and block CI if you configure the check as required.
+
+## How the CLI driver works
+
+Grantiva ships a pre-built XCUITest runner binary (`grantiva-runner`) inside the CLI. This runner:
+
+1. Installs into the simulator as a host app
+2. Receives navigation instructions from the CLI over a local socket
+3. Executes taps, swipes, and waits to drive your app to each screen
+4. Hands screenshot timing back to the CLI
+
+This is why **a physical device is not required for VRT** — the runner works entirely inside the iOS simulator. You do not need App Attest or any SDK integration for VRT to work.
+
+## Local vs CI usage
+
+**Local development:**
+
+```bash
+grantiva auth login      # Browser login — credentials cached
+grantiva diff capture    # Capture current screens
+grantiva diff compare    # Compare against baselines
+```
+
+Use local captures to preview VRT results before pushing. Baseline updates (`grantiva diff approve`) can be run locally or from CI.
+
+**CI (GitHub Actions, Bitrise, etc.):**
+
+```bash
+grantiva auth login --api-key $GRANTIVA_API_KEY   # API key auth, no browser
+grantiva ci run                                     # Full pipeline in one command
+```
+
+`grantiva ci run` runs build + capture + compare + upload in sequence. The result is posted as a GitHub Check Run on the pull request.
+
+Authentication:
+- **Local**: `grantiva auth login` opens your browser. Credentials are cached in the keychain.
+- **CI**: Pass `GRANTIVA_API_KEY` as an environment variable (from your CI secrets). The `--api-key` flag or env var is picked up automatically.
+
+## How results appear in the dashboard
+
+Each `grantiva ci run` creates a **VRT Run** in your dashboard with:
+
+- **Total / Passed / Failed / New** screen counts (clickable to filter the screenshot grid)
+- Per-screen status: `passed`, `failed`, `new_screen`, or `pending`
+- Side-by-side baseline vs current diff view for failed screens
+- Approve/reject controls (also available via CLI)
+
+New screens (no baseline yet) are shown separately and require a first approval before they enter the comparison cycle.
+
+## Configuration reference
+
+`grantiva.yml` controls everything:
+
+```yaml
+scheme: MyApp                    # Xcode scheme to build
+simulator: iPhone 16             # Simulator to use (must be available locally)
+bundle_id: com.example.myapp     # Your app's bundle identifier
+
+screens:
+  - name: Home
+    path: launch                 # 'launch' = app cold start
+
+  - name: Profile
+    path:
+      - tap: "Profile Tab"       # Tap a UI element by accessibility label or text
+      - wait: 1                  # Wait (seconds) for animation to settle
+
+  - name: Settings
+    path:
+      - tap: "Settings"
+      - wait: 0.5
+
+diff:
+  threshold: 0.02                # Pixel diff threshold (0–1, default 0.02)
+  perceptual_threshold: 5.0      # CIE76 perceptual distance (default 5.0)
+```
+
+For the full configuration reference, see [CLI Configuration](/cli/configuration).
+
+## Next steps
+
+- [VRT Quick Start](/quickstart-vrt) — get running in under 10 minutes
+- [CLI Commands](/cli/commands) — full command reference including `grantiva diff`, `grantiva ci run`, `grantiva doctor`
+- [CI Integration](/cli/ci-integration) — GitHub Actions, Bitrise, and Xcode Cloud examples

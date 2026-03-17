@@ -11,18 +11,7 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Blog",
-        "groups": [
-          {
-            "group": "App Attest",
-            "pages": [
-              "blog/apple-app-attest-explained"
-            ]
-          }
-        ]
-      },
-      {
-        "tab": "Guides",
+        "tab": "Documentation",
         "groups": [
           {
             "group": "Getting Started",
@@ -63,7 +52,8 @@
               "concepts/risk-scoring",
               "concepts/custom-claims",
               "concepts/webhooks",
-              "concepts/security"
+              "concepts/security",
+              "concepts/vrt"
             ]
           },
           {
@@ -115,6 +105,12 @@
               "api-reference/analytics/devices",
               "api-reference/analytics/compliance",
               "api-reference/analytics/export"
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              "api-reference/webhooks/endpoints"
             ]
           },
           {
@@ -173,6 +169,11 @@
       "cursor"
     ]
   },
+  "redirects": [
+    { "source": "/sdk/ios", "destination": "/sdk/installation" },
+    { "source": "/pricing", "destination": "/#pricing" },
+    { "source": "/blog/:slug*", "destination": "/quickstart" }
+  ],
   "footer": {
     "socials": {
       "x": "https://x.com/grantiva",
