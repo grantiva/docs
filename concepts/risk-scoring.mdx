@@ -30,7 +30,7 @@ The score considers multiple signals:
 ### In your app
 
 ```swift
-let result = try await grantiva.validateAttestation()
+let result = try await grantiva.attest()
 let score = result.deviceIntelligence.riskScore
 
 switch score {

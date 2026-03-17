@@ -38,13 +38,13 @@ let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
 #endif
 ```
 
-### 3. Call validateAttestation() normally
+### 3. Call attest() normally
 
 The API is identical — the SDK handles the fallback transparently:
 
 ```swift
 do {
-    let result = try await grantiva.validateAttestation()
+    let result = try await grantiva.attest()
     print("Device verified: \(result.isValid)")
 } catch GrantivaError.simulatorNotConfigured {
     // apiKey not provided — catch this in development
