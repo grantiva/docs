@@ -1,0 +1,79 @@
+---
+title: "Simulator Setup"
+description: "Develop and test with Grantiva on the iOS Simulator using API key fallback"
+---
+
+## Why App Attest doesn't work in Simulator
+
+Apple's App Attest service requires a physical Secure Enclave — a hardware chip present in real iPhones and iPads, but not in the iOS Simulator. There is no workaround for this; it's a deliberate hardware requirement.
+
+This means:
+- **Real device required** for production attestation flows
+- **Simulator / development** can use API key fallback — a lower-trust path that skips the cryptographic attestation but lets you build and test everything else
+
+## Configure API key fallback
+
+### 1. Get a development API key
+
+In the Grantiva dashboard, go to **Settings → API Keys** and create a key with the `development` role. Copy the key — it starts with `gpat_`.
+
+### 2. Initialize with the API key
+
+Pass the key when initializing the SDK. The SDK detects that App Attest is unavailable and switches to API key auth automatically:
+
+```swift
+import Grantiva
+
+// Simulator / development: pass apiKey for fallback
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", apiKey: "gpat_your_dev_key")
+```
+
+You can gate this on `#if targetEnvironment(simulator)` to keep production builds clean:
+
+```swift
+#if targetEnvironment(simulator)
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", apiKey: ProcessInfo.processInfo.environment["GRANTIVA_DEV_KEY"] ?? "")
+#else
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
+#endif
+```
+
+### 3. Call validateAttestation() normally
+
+The API is identical — the SDK handles the fallback transparently:
+
+```swift
+do {
+    let result = try await grantiva.validateAttestation()
+    print("Device verified: \(result.isValid)")
+} catch GrantivaError.simulatorNotConfigured {
+    // apiKey not provided — catch this in development
+    print("Set an API key for Simulator builds")
+} catch {
+    print("Attestation failed: \(error)")
+}
+```
+
+## Trust differences
+
+Requests made via API key fallback are treated as **unattested** on the server:
+
+| Property | Real device (App Attest) | Simulator (API key) |
+|---|---|---|
+| Cryptographic proof | Yes — hardware-backed | No |
+| Risk scoring | Full (0–100) | Limited |
+| JWT `attest` claim | `hardware` | `api_key` |
+| Accepted in production | Yes | Dev environments only |
+
+Use this path only for development and CI. Never ship API key fallback to the App Store.
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Back to Quick Start" icon="rocket" href="/quickstart">
+    Continue setting up Grantiva on a real device.
+  </Card>
+  <Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
+    Handle GrantivaError.simulatorNotConfigured and other errors.
+  </Card>
+</CardGroup>

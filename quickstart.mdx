@@ -3,6 +3,17 @@ title: "Quick Start"
 description: "Add device attestation to your iOS app in under 5 minutes"
 ---
 
+## Prerequisites
+
+<Warning>
+**App Attest requires a physical iPhone or iPad.** The iOS Simulator does not have a Secure Enclave, so App Attest is unavailable there. If you're developing in the Simulator, see [Simulator Setup](/simulator-setup) to configure API key fallback before continuing.
+</Warning>
+
+- Xcode 16+ with Swift 6.0+
+- A physical iOS 18+ device (for testing attestation)
+- Your Apple **Team ID** (found in the Apple Developer portal under Membership)
+- Your app's **Bundle ID**
+
 ## 1. Create an account
 
 Sign up at [grantiva.io/get-started](https://grantiva.io/get-started) with email, GitHub, or Google. Then add your first app from the dashboard — you'll need your Apple Team ID and Bundle ID.
@@ -80,6 +91,3 @@ Your backend can decode the JWT to read device intelligence and make trust decis
   </Card>
 </CardGroup>
 
-<Warning>
-App Attest is not available in the iOS simulator. Always test attestation on a real device. For simulator development, initialize with an API key: `Grantiva(teamId: "...", apiKey: "your-dev-key")`.
-</Warning>

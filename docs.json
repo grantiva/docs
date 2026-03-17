@@ -11,6 +11,17 @@
   "navigation": {
     "tabs": [
       {
+        "tab": "Blog",
+        "groups": [
+          {
+            "group": "App Attest",
+            "pages": [
+              "blog/apple-app-attest-explained"
+            ]
+          }
+        ]
+      },
+      {
         "tab": "Guides",
         "groups": [
           {
@@ -18,6 +29,7 @@
             "pages": [
               "index",
               "quickstart",
+              "simulator-setup",
               "quickstart-feedback",
               "quickstart-flags",
               "quickstart-vrt",
