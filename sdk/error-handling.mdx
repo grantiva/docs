@@ -13,19 +13,20 @@ All SDK operations throw `GrantivaError`, which conforms to `LocalizedError`.
 | `attestationNotAvailable` | App Attest not supported in this region | Degrade gracefully |
 | `networkError(Error)` | Network communication failed | Retry with backoff |
 | `validationFailed` | Server rejected the attestation | Device may be compromised — block or challenge |
-| `tokenExpired` | JWT token has expired | Call `refreshToken()` or `validateAttestation()` |
+| `tokenExpired` | JWT token has expired | Call `refreshToken()` or `attest()` |
 | `configurationError` | Invalid Bundle ID or Team ID | Check SDK initialization |
 | `keyGenerationFailed` | Can't create attestation key | Retry; may indicate Keychain issue |
 | `challengeExpired` | Server challenge timed out | Retry — the SDK handles this automatically |
 | `invalidResponse` | Unexpected server response format | Check SDK/server version compatibility |
 | `rateLimited` | Too many requests | Back off and retry after delay |
 | `feedbackNotAvailable` | Feedback not enabled for this tenant | Check your plan includes feedback |
+| `simulatorNotConfigured` | Running in iOS Simulator without an API key | Pass `apiKey` to `Grantiva(teamId:apiKey:)` — see [Simulator Setup](/simulator-setup) |
 
 ## Example
 
 ```swift
 do {
-    let result = try await grantiva.validateAttestation()
+    let result = try await grantiva.attest()
 } catch let error as GrantivaError {
     switch error {
     case .deviceNotSupported:
