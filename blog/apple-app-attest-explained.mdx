@@ -1,0 +1,246 @@
+---
+title: "How Apple App Attest Works (and Why It Matters)"
+description: "A technical deep-dive into Apple App Attest: the full attestation and assertion flow, Swift code examples, server-side verification, and common pitfalls."
+sidebarTitle: "How App Attest Works"
+---
+
+Since iOS 14, Apple has provided a framework called **App Attest** — a cryptographic mechanism that lets your server verify that the requests it receives genuinely originate from your unmodified app running on a legitimate Apple device.
+
+If you've shipped a mobile app that talks to a backend, you've probably faced a version of this problem: how do you make sure it's actually your app making those API calls? The old answer — embedding an API key in the binary — is embarrassingly weak. Any motivated attacker can extract a static key from an `.ipa` file in minutes with a free reverse-engineering tool. App Attest is Apple's real answer to this problem.
+
+This post explains exactly how App Attest works, walks through the client-side Swift implementation, and covers what your server needs to do with the attestation.
+
+---
+
+## What Is App Attest?
+
+App Attest is part of Apple's **DeviceCheck** framework, available on iOS 14+ and macOS 11+. At its core, it lets your iOS app generate a hardware-bound key pair inside the device's **Secure Enclave** and prove two things to your server:
+
+1. **This request came from your genuine, unmodified app** — verified cryptographically against your Bundle ID, Team ID, and app version hash.
+2. **This request was made on a legitimate Apple device** — not a simulator, not a patched binary, not a jailbroken phone.
+
+Unlike a shared API secret (which can be stolen and replayed from anywhere), the private key in App Attest never leaves the Secure Enclave — not even Apple can extract it. Apple's attestation servers sign the certificate chain, so your server can verify device authenticity without trusting the client at all.
+
+---
+
+## The Two-Phase Model: Attestation and Assertion
+
+App Attest has two distinct phases:
+
+- **Attestation** — a one-time setup where a new key is registered with Apple's CA. This proves the key was generated on a real device running your unmodified app.
+- **Assertion** — a lightweight, repeatable cryptographic proof attached to each subsequent request. Once a key is attested, assertions are fast and don't require an Apple server round-trip.
+
+Think of attestation as getting your passport issued, and assertions as showing your boarding pass at every gate.
+
+---
+
+## Phase 1: The Attestation Flow
+
+Here's how the attestation flow works end-to-end — from app launch to your server receiving a verified attestation object.
+
+### Step 1: Check Support
+
+App Attest requires iOS 14+ and is unavailable in the iOS simulator. Always check support before proceeding, and design a development fallback early.
+
+```swift
+import DeviceCheck
+
+guard DCAppAttestService.shared.isSupported else {
+    // Simulator or unsupported OS — fall back to dev/API key flow
+    return
+}
+```
+
+### Step 2: Generate a Key
+
+Generate a new key pair. The private key is created and stored in the Secure Enclave; you only receive a `keyId` — a Base64-encoded SHA-256 hash of the DER-encoded public key.
+
+```swift
+let keyId = try await DCAppAttestService.shared.generateKey()
+
+// Store keyId persistently — you'll need it for assertions
+// Use Keychain in production; UserDefaults here for clarity
+UserDefaults.standard.set(keyId, forKey: "com.yourapp.attestKeyId")
+```
+
+<Warning>
+Call `generateKey()` only once per install. Store the `keyId` in Keychain. Losing it means you'll need to re-attest. Calling it repeatedly consumes key quota and can trigger rate limits on Apple's side.
+</Warning>
+
+### Step 3: Fetch a Server Challenge
+
+Before attesting, request a fresh, single-use challenge from your server. This nonce is embedded in the attestation proof — it's what prevents replay attacks.
+
+```swift
+// Your server returns a cryptographically random byte sequence
+let challenge: Data = try await fetchAttestationChallenge()
+```
+
+Your server should generate a minimum of 16 bytes of random data per challenge, store it with a short TTL (60 seconds is typical), and mark it as consumed after a single use.
+
+### Step 4: Attest the Key
+
+Hash the challenge and pass it to `attestKey`. Under the hood, this sends a request to Apple's attestation servers. Apple verifies the key was generated on a genuine device running your unmodified app, and returns a signed certificate chain in CBOR encoding.
+
+```swift
+import CryptoKit
+
+let challengeHash = Data(SHA256.hash(data: challenge))
+
+let attestation = try await DCAppAttestService.shared.attestKey(
+    keyId,
+    clientDataHash: challengeHash
+)
+// `attestation` is CBOR-encoded Data — send this to your server
+```
+
+### Step 5: Send Attestation to Your Server
+
+Send the attestation blob and `keyId` to your backend for validation and storage.
+
+```swift
+struct AttestationRequest: Encodable {
+    let keyId: String
+    let attestation: String // Base64-encoded
+    let challenge: String   // Echo the challenge for server verification
+}
+
+let body = AttestationRequest(
+    keyId: keyId,
+    attestation: attestation.base64EncodedString(),
+    challenge: challenge.base64EncodedString()
+)
+
+var request = URLRequest(url: URL(string: "https://api.yourapp.com/attest")!)
+request.httpMethod = "POST"
+request.httpBody = try JSONEncoder().encode(body)
+request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+
+let (_, response) = try await URLSession.shared.data(for: request)
+```
+
+Your server validates the attestation, extracts and stores the public key, and from this point on can verify assertions signed by that key.
+
+---
+
+## Phase 2: The Assertion Flow
+
+Once a key is attested, use **assertions** to cryptographically sign individual requests. Assertions are fast — they don't hit Apple's servers — and can be attached to any API call.
+
+```swift
+// Hash the request body to bind the assertion to this specific request
+let requestBody = try JSONEncoder().encode(yourRequestPayload)
+let requestHash = Data(SHA256.hash(data: requestBody))
+
+let assertion = try await DCAppAttestService.shared.generateAssertion(
+    keyId,
+    clientDataHash: requestHash
+)
+
+// Include the assertion and keyId in your request headers
+var signedRequest = URLRequest(url: apiURL)
+signedRequest.httpMethod = "POST"
+signedRequest.httpBody = requestBody
+signedRequest.setValue(
+    assertion.base64EncodedString(),
+    forHTTPHeaderField: "X-App-Attest-Assertion"
+)
+signedRequest.setValue(keyId, forHTTPHeaderField: "X-App-Attest-Key-Id")
+```
+
+Your server verifies the assertion signature using the stored public key. If the signature doesn't match — because the binary was modified, or the request was replayed from a different device — reject it.
+
+---
+
+## What Your Server Needs to Validate
+
+This is where most teams underestimate the scope. Server-side App Attest verification is technically demanding.
+
+**Attestation validation requires:**
+1. Decoding the CBOR-encoded attestation statement
+2. Verifying the X.509 certificate chain up to Apple's App Attest root CA
+3. Verifying the embedded nonce matches `SHA256(challenge + keyId + appId)` where `appId = teamId + "." + bundleId`
+4. Checking the `aaguid` field — `appattestdevelop` for development, `appattest` for production
+5. Extracting and storing the public key for future assertion verification
+6. Parsing, validating, and managing the Apple receipt (which has its own expiry)
+
+**Assertion validation requires:**
+1. Verifying the CBOR-encoded signature against the stored public key using P-256 ECDSA
+2. Checking the authenticator data (relying party ID hash, counter)
+3. Verifying the counter strictly incremented — stale or replayed counters must be rejected
+4. Matching the client data hash against the expected request payload hash
+
+Getting any step wrong means either accepting fraudulent requests or rejecting legitimate ones. A misconfigured nonce check, for example, will silently fail open.
+
+---
+
+## Common Pitfalls
+
+**The simulator problem.** `isSupported` returns `false` in simulators. You need a developer fallback early — either an API key fallback or a mock attestation mode — otherwise your entire team is blocked from testing locally.
+
+**Key durability.** If the user reinstalls your app, or if `keyId` is stored only in `UserDefaults`, you lose the key and must re-attest. Store `keyId` in Keychain. Also design for key rotation: handle the case where your server no longer recognizes a client's `keyId`.
+
+**Receipt expiry.** The attestation receipt embedded in the CBOR object is short-lived. Apple provides a server-to-server receipt exchange API to get a long-lived receipt. Skipping this step means your attestation is valid for hours, not months.
+
+**Environment mismatch.** The `aaguid` field in the attestation certificate distinguishes development from production builds. In a development build, `aaguid` is `appattestdevelop`. Never accept a development attestation for a production endpoint.
+
+**Over-attesting.** Attestation is expensive — it hits Apple's servers and has rate limits. Only call `attestKey` once per key. Use `generateAssertion` for every request after that.
+
+---
+
+## Grantiva: Server-Side App Attest Without the Complexity
+
+Building all of this server-side validation yourself is several weeks of work, and the failure modes are subtle. Grantiva handles the complete attestation and assertion verification pipeline out of the box.
+
+With the Grantiva SDK, the entire client-side flow collapses to a single call:
+
+```swift
+import Grantiva
+
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
+
+let result = try await grantiva.validateAttestation()
+// result.token        — signed JWT for your backend
+// result.isValid      — true if the device passed attestation
+// result.deviceIntelligence.riskScore — 0–100 device risk score
+```
+
+Behind the scenes, Grantiva handles:
+- Full CBOR decoding and certificate chain validation
+- Nonce construction and verification
+- Apple root CA verification
+- Receipt management and exchange
+- Assertion counter tracking
+- Device risk scoring (jailbreak detection, simulator detection, tampered binary detection)
+- A signed JWT your backend verifies with a public key — no Apple round-trip needed on your backend
+
+No attestation server to maintain. No CBOR libraries to wrestle with. No Apple root CA PEM files to manage. The SDK falls back automatically to API key auth for simulator builds, so your development workflow isn't blocked.
+
+---
+
+## Why App Attest Matters
+
+Mobile API security has historically been security theater. Embedded API keys, certificate pinning, and binary obfuscation are all bypassable by a motivated attacker with a few free tools and a weekend.
+
+App Attest changes the threat model. The private key is in the Secure Enclave — it can't be extracted, only used. The certificate is signed by Apple — it can't be forged. The nonce ties the attestation to your specific challenge — it can't be replayed.
+
+It doesn't prevent all fraud. App Attest won't stop someone who owns a real device and uses it maliciously. But it eliminates an entire class of attacks: scripted bots making thousands of API calls from a server, modified `.ipa` binaries running on desktop simulators, and bulk abuse from non-Apple hardware.
+
+For apps that handle payments, health data, financial transactions, or anything with a risk model worth caring about — App Attest is the floor, not a ceiling.
+
+---
+
+## Get Started
+
+The client-side implementation is straightforward — the code in this post covers the essentials. The harder part is the server.
+
+**Try Grantiva free — no credit card required.** The free tier includes up to 1,000 monthly active devices, full attestation and assertion verification, device risk scoring, and a signed JWT for your backend. Integration takes about 5 minutes.
+
+<CardGroup cols={2}>
+  <Card title="Quick Start" icon="rocket" href="/quickstart">
+    Add Grantiva to your iOS app in 5 minutes.
+  </Card>
+  <Card title="Attestation Deep Dive" icon="shield-check" href="/concepts/attestation">
+    The full technical reference: token caching, refresh, and advanced flows.
+  </Card>
+</CardGroup>

@@ -45,7 +45,7 @@ curl -X POST https://grantiva.io/api/v1/claims \
 Claims appear in the attestation result:
 
 ```swift
-let result = try await grantiva.attest()
+let result = try await grantiva.validateAttestation()
 
 if let tier = result.customClaims["user_tier"] as? String {
     print("User tier: \(tier)")

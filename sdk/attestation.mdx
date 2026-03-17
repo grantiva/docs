@@ -6,7 +6,7 @@ description: "Validate devices using Apple App Attest and receive signed JWT tok
 ## Validate a device
 
 ```swift
-let result = try await grantiva.attest()
+let result = try await grantiva.validateAttestation()
 ```
 
 This performs the full attestation flow:
@@ -40,14 +40,14 @@ result.deviceIntelligence.lastAttestationDate // Date?
 
 ## Token caching
 
-The SDK automatically caches valid tokens. Calling `attest()` multiple times reuses the cached token until it expires, then performs a fresh attestation.
+The SDK automatically caches valid tokens. Calling `validateAttestation()` multiple times reuses the cached token until it expires, then performs a fresh attestation.
 
 ```swift
 // First call — full attestation flow
-let result1 = try await grantiva.attest()
+let result1 = try await grantiva.validateAttestation()
 
 // Second call — returns cached token instantly
-let result2 = try await grantiva.attest()
+let result2 = try await grantiva.validateAttestation()
 ```
 
 ## Refresh tokens
@@ -61,7 +61,7 @@ if let result = try await grantiva.refreshToken() {
 }
 ```
 
-Returns `nil` if no token has been stored yet (call `attest()` first).
+Returns `nil` if no token has been stored yet (call `validateAttestation()` first).
 
 ## Check token status
 
@@ -102,7 +102,7 @@ Your backend can decode the JWT to read:
 
 ```swift
 do {
-    let result = try await grantiva.attest()
+    let result = try await grantiva.validateAttestation()
 } catch GrantivaError.deviceNotSupported {
     // App Attest unavailable (simulator, old device)
 } catch GrantivaError.networkError(let error) {
