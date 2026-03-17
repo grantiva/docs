@@ -1,18 +1,29 @@
 ---
 title: "Risk Scoring"
-description: "Understanding device risk scores and how to use them"
+description: "Understanding risk categories, numeric scores, and how to use them by plan tier"
 ---
 
-Every attestation returns a risk score from 0 to 100.
+Every attestation returns a **risk category** — but the full numeric score depends on your plan.
+
+| Plan | What you get |
+|------|-------------|
+| Free / Pro | Risk category only: **Trusted**, **Suspicious**, or **Blocked** |
+| Business / Enterprise | Full 0–100 numeric risk score + category |
+
+<Callout type="info">
+On Free and Pro plans, `risk_score` is `null` in the attestation JWT. Use `risk_category` to make access decisions. See [Backend Verification](/backend-verification) for details.
+</Callout>
 
 ## Score ranges
 
-| Range | Level | Description |
-|-------|-------|-------------|
-| 0–20 | Low | Trusted device. Stock OS, legitimate app, normal behavior. |
-| 21–50 | Medium | Some risk indicators. May warrant additional verification. |
-| 51–75 | High | Significant risk. Consider blocking sensitive operations. |
-| 76–100 | Critical | Likely compromised. Block access or require re-verification. |
+On Business and Enterprise plans, the numeric score maps to these levels:
+
+| Range | Level | Category | Description |
+|-------|-------|----------|-------------|
+| 0–20 | Low | Trusted | Stock OS, legitimate app, normal behavior. |
+| 21–50 | Medium | Suspicious | Some risk indicators. May warrant additional verification. |
+| 51–75 | High | Suspicious | Significant risk. Consider blocking sensitive operations. |
+| 76–100 | Critical | Blocked | Likely compromised. Block access or require re-verification. |
 
 ## Risk factors
 
@@ -25,38 +36,63 @@ The score considers multiple signals:
 - **Device age** — First-time vs. returning devices
 - **OS version** — Known vulnerable OS versions
 
-## Using risk scores
+## Using risk data
 
-### In your app
+### By category (all plans)
+
+Every plan returns a `risk_category` you can branch on directly:
 
 ```swift
 let result = try await grantiva.validateAttestation()
-let score = result.deviceIntelligence.riskScore
+let category = result.deviceIntelligence.riskCategory
 
-switch score {
-case 0...20:
-    // Trusted — full access
+switch category {
+case .trusted:
     proceedNormally()
-case 21...50:
-    // Medium — maybe require extra verification
+case .suspicious:
     requestAdditionalAuth()
-case 51...75:
-    // High risk — limit functionality
-    limitAccess()
-default:
-    // Critical — block
+case .blocked:
     blockAccess()
+}
+```
+
+### By numeric score (Business / Enterprise)
+
+If your plan includes the numeric score, you can use finer-grained thresholds:
+
+```swift
+let result = try await grantiva.validateAttestation()
+
+if let score = result.deviceIntelligence.riskScore {
+    switch score {
+    case 0...20:
+        proceedNormally()
+    case 21...50:
+        requestAdditionalAuth()
+    case 51...75:
+        limitAccess()
+    default:
+        blockAccess()
+    }
+} else {
+    // Free/Pro — fall back to category
+    switch result.deviceIntelligence.riskCategory {
+    case .trusted:    proceedNormally()
+    case .suspicious: requestAdditionalAuth()
+    case .blocked:    blockAccess()
+    }
 }
 ```
 
 ### On your backend
 
-Decode the JWT to read the risk score:
+Decode the JWT to read risk data:
 
 ```json
 {
   "device_intelligence": {
     "risk_score": 15,
+    "risk_category": "trusted",
     "jailbreak_detected": false,
     "device_integrity": "valid"
   }
