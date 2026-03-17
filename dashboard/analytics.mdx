@@ -46,7 +46,7 @@ Distribution of iOS/macOS versions across your attesting devices.
 Access analytics programmatically:
 
 ```bash
-curl https://grantiva.io/api/v1/analytics/dashboard?timeRange=30d \
+curl https://api.grantiva.io/api/v1/analytics/dashboard?timeRange=30d \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
@@ -57,7 +57,7 @@ See the [Analytics API reference](/api-reference/analytics/dashboard) for detail
 Export device data as CSV from the analytics page or via the API:
 
 ```bash
-curl "https://grantiva.io/api/v1/analytics/export?type=csv&data=devices&period=30d" \
+curl "https://api.grantiva.io/api/v1/analytics/export?type=csv&data=devices&period=30d" \
   -H "X-API-Key: YOUR_API_KEY" \
   -o devices.csv
 ```

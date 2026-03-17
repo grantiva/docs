@@ -28,7 +28,7 @@ Go to **Settings > Custom Claims** to create, edit, reorder, and test claims.
 
 ```bash
 # Create a claim
-curl -X POST https://grantiva.io/api/v1/claims \
+curl -X POST https://api.grantiva.io/api/v1/claims \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
@@ -77,7 +77,7 @@ And in the decoded JWT on your backend:
 Use the claim test endpoint to preview how a claim evaluates without performing a real attestation:
 
 ```bash
-curl -X POST https://grantiva.io/api/v1/claims/test \
+curl -X POST https://api.grantiva.io/api/v1/claims/test \
   -H "Authorization: Bearer YOUR_TOKEN" \
   -H "Content-Type: application/json" \
   -d '{
