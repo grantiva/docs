@@ -140,6 +140,11 @@
           "anchor": "Dashboard",
           "href": "https://grantiva.io/dashboard",
           "icon": "chart-line"
+        },
+        {
+          "anchor": "Status",
+          "href": "https://grantiva-services.instatus.com",
+          "icon": "signal"
         }
       ]
     }
