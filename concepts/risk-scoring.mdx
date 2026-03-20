@@ -7,16 +7,16 @@ Every attestation returns a **risk category** — but the full numeric score dep
 
 | Plan | What you get |
 |------|-------------|
-| Free / Pro | Risk category only: **Trusted**, **Suspicious**, or **Blocked** |
-| Business / Enterprise | Full 0–100 numeric risk score + category |
+| Free | Risk category only: **Trusted**, **Suspicious**, or **Blocked** |
+| Pro / Business / Enterprise | Full 0–100 numeric risk score + category |
 
 <Callout type="info">
-On Free and Pro plans, `risk_score` is `null` in the attestation JWT. Use `risk_category` to make access decisions. See [Backend Verification](/backend-verification) for details.
+On the Free plan, `risk_score` is `null` in the attestation JWT. Use `risk_category` to make access decisions. See [Backend Verification](/backend-verification) for details.
 </Callout>
 
 ## Score ranges
 
-On Business and Enterprise plans, the numeric score maps to these levels:
+On Pro, Business, and Enterprise plans, the numeric score maps to these levels:
 
 | Range | Level | Category | Description |
 |-------|-------|----------|-------------|

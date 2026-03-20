@@ -30,6 +30,7 @@
             "pages": [
               "sdk/installation",
               "sdk/attestation",
+              "sdk/testing",
               "sdk/user-identity",
               "sdk/feedback",
               "sdk/feature-flags",
@@ -140,6 +141,11 @@
           "anchor": "Dashboard",
           "href": "https://grantiva.io/dashboard",
           "icon": "chart-line"
+        },
+        {
+          "anchor": "Status",
+          "href": "https://grantiva-services.instatus.com",
+          "icon": "signal"
         }
       ]
     }

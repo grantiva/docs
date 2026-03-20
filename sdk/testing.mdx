@@ -1,0 +1,299 @@
+---
+title: "Testing Your Integration"
+description: "Verify your Grantiva SDK integration is working correctly before shipping"
+---
+
+After adding the SDK and calling `validateAttestation()`, you need to know whether it is actually working. This guide walks through what to look for on both the iOS Simulator and a physical device, what a successful response looks like, and how to diagnose common errors.
+
+<Info>
+**Physical device required for full attestation.** The iOS Simulator cannot run App Attest because it has no Secure Enclave. If you are developing in the Simulator, see [Simulator Setup](/simulator-setup) to configure API key fallback first.
+</Info>
+
+---
+
+## Quick verification checklist
+
+Run through these five checks after your first `validateAttestation()` call:
+
+<Steps>
+  <Step title="result.isValid is true">
+    The most basic check. If `false`, the device did not pass attestation.
+
+    ```swift
+    let result = try await grantiva.validateAttestation()
+    print(result.isValid) // true
+    ```
+  </Step>
+
+  <Step title="result.token is a non-empty string">
+    A JWT was issued. It should begin with `eyJ` (base64-encoded JSON header).
+
+    ```swift
+    print(result.token.prefix(10)) // "eyJhbGciOi"
+    ```
+  </Step>
+
+  <Step title="riskScore is present (if on Pro or above)">
+    On a physical device with a Pro+ plan, `riskScore` is a non-nil integer between 0 and 100. On the Free tier or in the Simulator, it will be `nil`.
+
+    ```swift
+    print(result.deviceIntelligence.riskScore) // Optional(12)
+    ```
+
+    A score of `nil` on a physical device with a Pro plan indicates an issue — see [riskScore is nil on a real device](#riskscore-is-nil-on-a-real-device) below.
+  </Step>
+
+  <Step title="The JWT attest claim matches your environment">
+    Decode the JWT payload (Base64URL-decode the middle segment) and confirm the `attest` claim:
+
+    | Environment | Expected value |
+    |---|---|
+    | Physical device | `hardware` |
+    | Simulator (API key fallback) | `api_key` |
+
+    If you see `api_key` on a real device, the SDK fell back to API key auth — check that you are not passing an `apiKey` parameter in your production initialization.
+  </Step>
+
+  <Step title="Your app appears in the Grantiva dashboard">
+    Open **Dashboard → Analytics → Devices**. You should see a new attestation event. If nothing appears after 30 seconds, the request may not be reaching the server — check [network errors](#networkerror) below.
+  </Step>
+</Steps>
+
+---
+
+## What the response looks like
+
+### Physical device (full attestation)
+
+```swift
+result.isValid                              // true
+result.token                                // "eyJhbGciOiJFUzI1NiIsInR5..."
+result.expiresAt                            // 2025-03-21 14:00:00 UTC
+
+result.deviceIntelligence.deviceId          // "d3f1a2b4-..."
+result.deviceIntelligence.riskScore         // 8   (0–100; nil on Free tier)
+result.deviceIntelligence.riskCategory      // "low"
+result.deviceIntelligence.deviceIntegrity   // "uncompromised"
+result.deviceIntelligence.jailbreakDetected // false
+result.deviceIntelligence.attestationCount  // 1
+result.customClaims                         // ["plan": "pro", "env": "production"]
+```
+
+### Simulator (API key fallback)
+
+```swift
+result.isValid                              // true
+result.token                                // "eyJhbGciOiJFUzI1NiIsInR5..."
+result.expiresAt                            // 2025-03-21 14:00:00 UTC
+
+result.deviceIntelligence.deviceId          // "sim-..."  (prefixed to distinguish)
+result.deviceIntelligence.riskScore         // nil        (not computed without hardware attestation)
+result.deviceIntelligence.riskCategory      // "unknown"
+result.deviceIntelligence.deviceIntegrity   // "simulated"
+result.deviceIntelligence.jailbreakDetected // false
+result.deviceIntelligence.attestationCount  // 1
+result.customClaims                         // ["plan": "pro", "env": "development"]
+```
+
+---
+
+## Sample JWT payload
+
+After decoding the token (Base64URL-decode the middle segment), you will see something like this:
+
+```json
+{
+  "sub": "d3f1a2b4-8c3e-4f2a-9b1d-5e7f8a2c4d6e",
+  "iss": "api.grantiva.io",
+  "aud": "com.example.MyApp",
+  "iat": 1742385600,
+  "exp": 1742389200,
+  "attest": "hardware",
+  "bundle_id": "com.example.MyApp",
+  "team_id": "ABCDE12345",
+  "risk_score": 8,
+  "risk_category": "low",
+  "device_integrity": "uncompromised",
+  "jailbreak_detected": false,
+  "attestation_count": 1,
+  "plan": "pro"
+}
+```
+
+**Claims always present:**
+
+| Claim | Type | Description |
+|---|---|---|
+| `sub` | string | Unique device ID |
+| `iss` | string | Issuer — `api.grantiva.io` |
+| `aud` | string | Your Bundle ID |
+| `iat` / `exp` | number | Issued at / expiry (Unix timestamps) |
+| `attest` | string | `hardware` or `api_key` |
+| `bundle_id` | string | Your app's Bundle ID |
+| `team_id` | string | Your Apple Team ID |
+| `jailbreak_detected` | boolean | Always present |
+
+**Claims present on Pro and above:**
+
+| Claim | Type | Description |
+|---|---|---|
+| `risk_score` | number | 0–100 integer |
+| `risk_category` | string | `low`, `medium`, `high`, or `critical` |
+| `device_integrity` | string | `uncompromised`, `simulated`, or `compromised` |
+| `attestation_count` | number | Lifetime attestation count for this device |
+
+**Custom claims** — any claims you have configured in the dashboard appear at the top level alongside the standard claims.
+
+---
+
+## Risk score reference
+
+| Score | Category | Suggested action |
+|---|---|---|
+| 0–20 | `low` | Trusted — proceed normally |
+| 21–50 | `medium` | Monitor — consider step-up verification |
+| 51–75 | `high` | Challenge — require additional confirmation |
+| 76–100 | `critical` | Block — device likely compromised |
+
+---
+
+## Common errors and fixes
+
+### `deviceNotSupported`
+
+**Cause:** App Attest is unavailable. Most commonly this is the iOS Simulator, or a very old device without a Secure Enclave.
+
+**Fix:** Add API key fallback for Simulator builds. See [Simulator Setup](/simulator-setup).
+
+```swift
+catch GrantivaError.deviceNotSupported {
+    // Expected in Simulator — configure API key fallback
+}
+```
+
+---
+
+### `simulatorNotConfigured`
+
+**Cause:** Running in the Simulator without providing an API key. The SDK detected the Simulator environment but has no fallback credentials.
+
+**Fix:** Pass an `apiKey` parameter during initialization for Simulator builds:
+
+```swift
+#if targetEnvironment(simulator)
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", apiKey: "gpat_your_dev_key")
+#else
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
+#endif
+```
+
+Get a development API key from **Dashboard → Settings → API Keys**.
+
+---
+
+### `configurationError`
+
+**Cause:** The Team ID you passed to `Grantiva(teamId:)` does not match the Bundle ID of the running app, or the app is not registered in the Grantiva dashboard.
+
+**Fix:**
+1. Verify your Team ID in the Apple Developer portal under **Membership**.
+2. Confirm the Bundle ID in Xcode matches what you registered in the dashboard under **Apps**.
+3. Check that the `teamId` string has no extra whitespace.
+
+---
+
+### `networkError`
+
+**Cause:** The SDK could not reach `api.grantiva.io`. Common causes: no internet connection, App Transport Security (ATS) misconfiguration, VPN interference, or the challenge request timing out.
+
+**Fix:**
+1. Confirm the device has internet access.
+2. Check that your `Info.plist` does not block outbound HTTPS to `api.grantiva.io`.
+3. In development, check the device is not behind a proxy that intercepts TLS.
+4. The SDK retries automatically — if `networkError` is consistently thrown, check the [status page](https://grantiva-services.instatus.com).
+
+---
+
+### `validationFailed`
+
+**Cause:** The Grantiva server rejected the attestation. This usually means the attestation object was malformed, the challenge expired before the SDK submitted it, or the device's App Attest key is corrupted.
+
+**Fix:**
+1. Call `grantiva.clearStoredData()` to wipe the cached key and token, then retry.
+2. If the problem persists across retries on the same device, the device's App Attest key may need to be regenerated — this happens automatically after `clearStoredData()`.
+
+```swift
+catch GrantivaError.validationFailed {
+    // Force key regeneration
+    grantiva.clearStoredData()
+    let result = try await grantiva.validateAttestation()
+}
+```
+
+---
+
+### `challengeExpired`
+
+**Cause:** The server-issued challenge has a short TTL (typically 60 seconds). If the device's clock is significantly skewed, or the attestation process takes too long (e.g. slow network), the challenge may expire before the SDK submits the response.
+
+**Fix:** The SDK retries automatically on `challengeExpired`. If you see this error bubbling up to your code, it means retries were exhausted. Check for:
+- Device clock sync issues (`Settings → General → Date & Time → Set Automatically`)
+- Network latency causing attestation submission to exceed 60 seconds
+
+---
+
+### `rateLimited`
+
+**Cause:** Your tenant has exceeded the request rate limit, or this device has submitted too many attestation requests in a short window.
+
+**Fix:** The SDK includes backoff-aware retry logic. If `rateLimited` surfaces to your code:
+1. Ensure you are not calling `validateAttestation()` in a tight loop — let the SDK handle caching.
+2. If you see this in production at scale, contact support to review your plan limits.
+
+---
+
+### `tokenExpired` returned by your backend
+
+**Cause:** The JWT was issued with a limited TTL (default 1 hour). Your backend received a token that has already expired.
+
+**Fix:** Call `refreshToken()` before sending the token to your backend, or catch the expired state in your backend and prompt the client to re-attest:
+
+```swift
+// Check before making an API call
+if !grantiva.isTokenValid() {
+    let result = try await grantiva.refreshToken()
+    // Use result.token
+}
+```
+
+---
+
+### `riskScore` is nil on a real device
+
+**Cause:** One of:
+1. Your account is on the **Free tier** — risk scoring requires Pro or above.
+2. The attestation used API key fallback instead of App Attest (check the `attest` JWT claim).
+
+**Fix:**
+1. Check your plan in **Dashboard → Settings → Billing**.
+2. Confirm `result.deviceIntelligence.riskScore` is `nil` specifically (not `0`) — a score of `0` is a valid low-risk score, not an error.
+3. Confirm the JWT `attest` claim is `hardware`, not `api_key`.
+
+---
+
+## Next steps
+
+<CardGroup cols={2}>
+  <Card title="Backend JWT verification" icon="server" href="/backend-verification">
+    Verify the token server-side and read device claims in Node.js, Python, or Go.
+  </Card>
+  <Card title="Error handling reference" icon="triangle-exclamation" href="/sdk/error-handling">
+    Full list of GrantivaError cases with suggested handling.
+  </Card>
+  <Card title="Risk scoring concepts" icon="gauge-high" href="/concepts/risk-scoring">
+    How risk scores are computed and how to set thresholds.
+  </Card>
+  <Card title="Simulator setup" icon="computer" href="/simulator-setup">
+    Configure API key fallback for development builds.
+  </Card>
+</CardGroup>
