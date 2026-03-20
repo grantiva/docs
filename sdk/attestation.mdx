@@ -31,7 +31,7 @@ result.customClaims         // [String: Any] — your custom JWT claims
 
 ```swift
 result.deviceIntelligence.deviceId           // String — unique device ID
-result.deviceIntelligence.riskScore          // Int — 0 to 100
+result.deviceIntelligence.riskScore          // Int? — 0–100 (Pro and above); nil on Free tier
 result.deviceIntelligence.deviceIntegrity    // String — integrity status
 result.deviceIntelligence.jailbreakDetected  // Bool
 result.deviceIntelligence.attestationCount   // Int — total attestations from this device

@@ -30,6 +30,7 @@
             "pages": [
               "sdk/installation",
               "sdk/attestation",
+              "sdk/testing",
               "sdk/user-identity",
               "sdk/feedback",
               "sdk/feature-flags",

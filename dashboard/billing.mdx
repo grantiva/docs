@@ -1,0 +1,89 @@
+---
+title: "Billing & Plans"
+description: "Understand MAD limits, what happens when you approach them, and how to upgrade or downgrade your plan"
+---
+
+## How billing works
+
+Grantiva uses **flat monthly pricing** based on your plan tier. There are no per-attestation fees and no overage charges.
+
+| Plan | Price | Monthly Active Devices |
+|------|-------|----------------------|
+| Free | $0 | 1,000 |
+| Pro | $29/mo | 25,000 |
+| Business | $149/mo | 250,000 |
+| Enterprise | $899/mo | Unlimited |
+
+Annual billing saves 20% on all paid plans.
+
+## Monthly Active Devices (MAD)
+
+A **Monthly Active Device (MAD)** is a unique device that performs at least one attestation during your billing period. If the same device attests 100 times in a month, it counts as 1 MAD.
+
+Your MAD count resets at the start of each billing period.
+
+## What happens when you approach your limit
+
+Grantiva is designed to **never break your app for existing users**. Here's what happens as you scale:
+
+- **80% of limit reached** — You'll receive an email notification and see a warning banner in your dashboard. All attestations continue working normally.
+- **100% of limit reached** — You'll receive a second notification. A **7-day grace period** begins automatically. Devices already in your fleet keep working. New devices can still attest during the grace period, giving you time to upgrade.
+- **After the grace period** — If you haven't upgraded, new device onboarding pauses until you do. Existing attested devices are never affected — they continue working regardless.
+
+<Callout type="info">
+**No surprise charges.** We will always notify you before taking any action. You will never receive an unexpected bill.
+</Callout>
+
+## Upgrading your plan
+
+You can upgrade at any time from the **Account Settings → Billing** page in your dashboard.
+
+1. Go to **Account Settings** → **Billing**
+2. Click **Upgrade Plan**
+3. Select your new tier
+4. Confirm payment
+
+Upgrades take effect **immediately**. Your new MAD limit applies right away, and you'll be charged a prorated amount for the remainder of the current billing period.
+
+## Downgrading your plan
+
+Downgrades take effect at the **end of your current billing period**. You'll continue to have access to your current plan's features until then.
+
+If your current MAD usage exceeds the limit of the plan you're downgrading to, you'll see a warning before confirming. We recommend waiting until your MAD usage naturally drops or exporting your data first.
+
+## Cancelling
+
+You can cancel your subscription at any time from **Account Settings → Billing → Cancel Plan**.
+
+After cancellation:
+- Your account reverts to the Free tier at the end of the billing period
+- Your data is retained for 90 days
+- You can reactivate at any time
+
+## Annual billing
+
+Switch to annual billing from **Account Settings → Billing → Billing Cycle** to save 20%.
+
+Annual plans are charged upfront for 12 months. Prorated refunds are not issued for mid-year cancellations, but you can downgrade to Free at any time.
+
+## Frequently asked questions
+
+**Will my users' attestations fail if I exceed my MAD limit?**
+
+No. Existing attested devices always keep working. When you hit your limit, a 7-day grace period starts automatically — new devices can still attest during this window. After the grace period, new device onboarding pauses until you upgrade, but your existing users are never affected.
+
+**Can I get a refund if I upgrade and then downgrade?**
+
+Upgrades are prorated. If you upgrade mid-month and then downgrade, you'll be charged only for the days on the higher plan. Contact [support@grantiva.io](mailto:support@grantiva.io) if you need help with a billing adjustment.
+
+**Where can I see my current MAD usage?**
+
+Your current MAD count and limit are shown in **Dashboard → Analytics** and in **Account Settings → Billing**. The attestation page also shows your MAD this month in the stat cards.
+
+**Do unused MADs roll over?**
+
+No. MAD counts reset at the start of each billing period. There are no rollover credits.
+
+**Can I add more MADs without changing my plan?**
+
+Not currently. Contact [sales@grantiva.io](mailto:sales@grantiva.io) if you need a custom MAD allowance — we can accommodate this on Enterprise plans.
