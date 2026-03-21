@@ -62,6 +62,7 @@
             "pages": [
               "dashboard/overview",
               "dashboard/analytics",
+              "dashboard/billing",
               "dashboard/team-management"
             ]
           }
