@@ -40,49 +40,45 @@ The score considers multiple signals:
 
 ### By category (all plans)
 
-Every plan returns a `risk_category` you can branch on directly:
+Every plan returns a `risk_category` in the attestation JWT. Use the numeric score ranges to branch in Swift:
 
 ```swift
 let result = try await grantiva.validateAttestation()
-let category = result.deviceIntelligence.riskCategory
+// Trusted: 0–20 | Suspicious: 21–75 | Blocked: 76–100
+let score = result.deviceIntelligence.riskScore
 
-switch category {
-case .trusted:
+if score <= 20 {
     proceedNormally()
-case .suspicious:
+} else if score <= 75 {
     requestAdditionalAuth()
-case .blocked:
+} else {
     blockAccess()
 }
 ```
 
-### By numeric score (Business / Enterprise)
+<Info>The `risk_category` string is also available directly from the decoded JWT on your backend. See [Backend JWT Verification](/backend-verification).</Info>
+
+### By numeric score (Pro / Business / Enterprise)
 
 If your plan includes the numeric score, you can use finer-grained thresholds:
 
 ```swift
 let result = try await grantiva.validateAttestation()
+let score = result.deviceIntelligence.riskScore
 
-if let score = result.deviceIntelligence.riskScore {
-    switch score {
-    case 0...20:
-        proceedNormally()
-    case 21...50:
-        requestAdditionalAuth()
-    case 51...75:
-        limitAccess()
-    default:
-        blockAccess()
-    }
-} else {
-    // Free/Pro — fall back to category
-    switch result.deviceIntelligence.riskCategory {
-    case .trusted:    proceedNormally()
-    case .suspicious: requestAdditionalAuth()
-    case .blocked:    blockAccess()
-    }
+switch score {
+case 0...20:
+    proceedNormally()
+case 21...50:
+    requestAdditionalAuth()
+case 51...75:
+    limitAccess()
+default:
+    blockAccess()
 }
 ```
+
+<Info>On the Free plan, `riskScore` is `0` and `risk_score` is `null` in the JWT. Use `risk_category` from the decoded JWT to make tier-safe access decisions on Free.</Info>
 
 ### On your backend
 

@@ -54,7 +54,7 @@ That's it. The SDK reads your Bundle ID automatically from `Bundle.main`.
 do {
     let result = try await grantiva.validateAttestation()
     print("Device verified: \(result.isValid)")
-    print("Risk category: \(result.deviceIntelligence.riskCategory)")
+    print("Risk score: \(result.deviceIntelligence.riskScore)")
     // Send result.token to your backend as a Bearer token
 } catch {
     print("Attestation failed: \(error)")
