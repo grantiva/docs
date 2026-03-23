@@ -3,14 +3,21 @@ title: "Quick Start"
 description: "Add device attestation to your iOS app in under 5 minutes"
 ---
 
+## Choose your setup
+
+<CardGroup cols={2}>
+  <Card title="Physical device" icon="mobile-screen" href="#1-create-an-account">
+    **Recommended.** Full attestation, risk scoring, and JWT. Requires an iPhone or iPad running iOS 18+. Continue reading below.
+  </Card>
+  <Card title="Simulator / CI" icon="display" href="/simulator-setup">
+    **No device handy? Start here.** API key fallback — build and test everything today, switch to hardware attestation when ready.
+  </Card>
+</CardGroup>
+
 ## Prerequisites
 
-<Warning>
-**App Attest requires a physical iPhone or iPad.** The iOS Simulator does not have a Secure Enclave, so App Attest is unavailable there. If you're developing in the Simulator, see [Simulator Setup](/simulator-setup) to configure API key fallback before continuing.
-</Warning>
-
 - Xcode 16+ with Swift 6.0+
-- A physical iOS 18+ device (for testing attestation)
+- A physical iOS 18+ device
 - Your Apple **Team ID** (found in the Apple Developer portal under Membership)
 - Your app's **Bundle ID**
 
