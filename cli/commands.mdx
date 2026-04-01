@@ -52,6 +52,36 @@ This is the same build/install sequence used by `grantiva ci run`, useful for it
 
 ---
 
+## `grantiva run`
+
+Run Maestro flows against a simulator without visual regression. Reports step pass/fail for each screen and captures a screenshot on failure.
+
+```bash
+grantiva run [--scheme SCHEME] [--simulator SIMULATOR] [--bundle-id ID]
+             [--app-file PATH] [--no-build] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--scheme` | Xcode scheme to build |
+| `--simulator` | Simulator name (e.g., "iPhone 16") |
+| `--bundle-id` | App bundle identifier |
+| `--app-file` | Path to a pre-built `.app` bundle or `.ipa` archive (skips build) |
+| `--no-build` | Skip building and installing — assume the app is already on the simulator |
+
+**What it does:**
+1. Boots simulator
+2. Builds, installs, and launches the app (unless `--app-file` or `--no-build`)
+3. Runs all configured Maestro flows and reports step pass/fail
+4. On failure: captures a screenshot of the simulator's current state and prints the path
+5. Saves screenshots to `.grantiva/captures/` (not compared against any baseline)
+
+No authentication required. Useful for functional/smoke testing locally or in CI pipelines that don't need visual regression.
+
+Exit code `0` if all steps pass, `1` if any fail.
+
+---
+
 ## `grantiva ci run`
 
 Run the full visual regression pipeline: build, capture, compare, upload.
