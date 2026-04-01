@@ -227,10 +227,18 @@ Run once after installing or upgrading the CLI.
 Start the runner with WebDriverAgent and keep it alive for interactive use.
 
 ```bash
-grantiva runner start [--bundle-id ID] [--simulator SIMULATOR] [--json]
+grantiva runner start [--bundle-id ID] [--simulator SIMULATOR] [--detach] [--json]
 ```
 
+| Flag | Description |
+|------|-------------|
+| `--bundle-id` | App bundle identifier (reads from `grantiva.yml` if omitted) |
+| `--simulator` | Simulator name or UDID (reads from `grantiva.yml` if omitted) |
+| `--detach` | Detach the runner from the terminal using `nohup`. The process survives terminal closure. Prints the log file path on start. |
+
 Boots the simulator, launches WDA, and writes a session file so other commands can auto-detect the port. Use `grantiva runner dump-hierarchy` to inspect the view hierarchy while running.
+
+With `--detach`, the runner is launched via `nohup` in its own shell session so it keeps running after the terminal closes. The log file path is printed on startup — tail it with `tail -f <path>` to follow runner output.
 
 ---
 
