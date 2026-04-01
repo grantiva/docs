@@ -180,38 +180,76 @@ Verifies macOS version, Xcode, Swift, simulator availability, and command-line t
 
 ---
 
-## `grantiva driver build`
+## `grantiva runner install`
 
-Build and cache the XCUITest driver.
+Extract or update the embedded UI automation runner binary.
 
 ```bash
-grantiva driver build [--simulator SIMULATOR] [--json]
+grantiva runner install [--json]
 ```
 
-Run once per Xcode version. The driver is cached at `~/.grantiva/driver/`.
+Run once after installing or upgrading the CLI.
 
 ---
 
-## `grantiva driver start`
+## `grantiva runner start`
 
-Start the driver server for manual use.
+Start the runner with WebDriverAgent and keep it alive for interactive use.
 
 ```bash
-grantiva driver start [--bundle-id ID] [--simulator SIMULATOR]
-                      [--port PORT] [--json]
+grantiva runner start [--bundle-id ID] [--simulator SIMULATOR] [--json]
 ```
 
-Default port is `22088`. Blocks until interrupted.
+Boots the simulator, launches WDA, and writes a session file so other commands can auto-detect the port. Use `grantiva runner dump-hierarchy` to inspect the view hierarchy while running.
 
 ---
 
-## `grantiva driver stop`
+## `grantiva runner stop`
 
-Stop running driver processes.
+Stop the running runner session.
 
 ```bash
-grantiva driver stop [--json]
+grantiva runner stop [--json]
 ```
+
+---
+
+## `grantiva runner dump-hierarchy`
+
+Dump the view hierarchy from a running app.
+
+```bash
+grantiva runner dump-hierarchy [--port PORT] [--format FORMAT] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--port` | WDA port (auto-detected from active session if omitted) |
+| `--format` | Output format: `tree` (default), `json`, or `xml` |
+
+Requires an active session started with `grantiva runner start`.
+
+---
+
+## `grantiva runner version`
+
+Show the embedded runner version.
+
+```bash
+grantiva runner version [--json]
+```
+
+---
+
+## `grantiva mcp`
+
+Start the Grantiva MCP server for AI agent integration.
+
+```bash
+grantiva mcp
+```
+
+Runs an MCP-compatible server that exposes the live view hierarchy and device state as resources, enabling AI coding assistants to query the running app.
 
 ---
 

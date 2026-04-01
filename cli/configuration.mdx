@@ -151,6 +151,52 @@ Maestro sub-flows referenced via `runFlow` are also parsed in Maestro format whe
 
 A screen fails if either threshold is exceeded.
 
+## Build settings
+
+Pass extra flags directly to `xcodebuild`:
+
+```yaml
+build_settings:
+  - "OTHER_SWIFT_FLAGS=-DDEBUG_MODE"
+  - "SWIFT_OPTIMIZATION_LEVEL=-Onone"
+```
+
+Each entry is appended verbatim to the xcodebuild invocation.
+
+## Accessibility checks
+
+```yaml
+a11y:
+  fail_on_new_violations: true        # Fail the run on new violations (default: true)
+  rules:
+    - missing_label                   # Elements with no accessibility label
+    - small_tap_target                # Tap targets smaller than 44×44pt
+```
+
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `fail_on_new_violations` | `true` | Fail CI when new violations are detected |
+| `rules` | `[missing_label, small_tap_target]` | Which a11y rules to enforce |
+
+## Size limits
+
+Warn or fail when a screenshot exceeds a file size threshold:
+
+```yaml
+size:
+  warn_mb: 0.5    # Warn if any capture exceeds 500 KB (default: 0.5)
+  fail_mb: 2.0    # Fail if any capture exceeds 2 MB (default: 2.0)
+```
+
+## AI provider
+
+```yaml
+ai:
+  provider: none    # AI provider for smart assertions (default: none)
+```
+
+Reserved for future AI-powered visual assertion features.
+
 ## Directory structure
 
 After running commands, Grantiva creates:

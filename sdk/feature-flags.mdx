@@ -61,24 +61,14 @@ Default is `.production`.
 
 ## Cache control
 
-Set the TTL at init time using `flagCacheTTL`:
+Flags are cached for 5 minutes by default. Adjust the TTL at any point after initialization:
 
 ```swift
 // 30-second TTL — fast propagation for kill-switches
-let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", flagCacheTTL: 30)
+grantiva.flags.cacheTTL = 30
 
 // Disable caching entirely — always fetch fresh values
-let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", flagCacheTTL: 0)
-
-// Default: 5 minutes
-let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
-```
-
-You can also update the TTL at runtime:
-
-```swift
-// Change cache TTL on the service directly
-await grantiva.flags.cacheTTL = 60  // 1 minute
+grantiva.flags.cacheTTL = 0
 
 // Force refresh on next fetch
 await grantiva.flags.refresh()
