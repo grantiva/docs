@@ -5,6 +5,53 @@ description: "Complete reference for all Grantiva CLI commands"
 
 All commands support `--json` for machine-readable output.
 
+## `grantiva build`
+
+Build the app for a simulator using xcodebuild.
+
+```bash
+grantiva build [--scheme SCHEME] [--simulator SIMULATOR]
+               [--app-file PATH] [--no-build] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--scheme` | Xcode scheme to build |
+| `--simulator` | Simulator name (e.g., "iPhone 16") |
+| `--app-file` | Path to a pre-built `.app` bundle or `.ipa` archive (skips build) |
+| `--no-build` | No-op pass-through (exits immediately) |
+
+Boots the simulator, runs `xcodebuild`, and prints a build summary. Exits `1` on build failure.
+
+---
+
+## `grantiva install`
+
+Build, install, and launch the app on a simulator in one step.
+
+```bash
+grantiva install [--scheme SCHEME] [--simulator SIMULATOR]
+                 [--bundle-id ID] [--app-file PATH] [--no-build] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--scheme` | Xcode scheme to build |
+| `--simulator` | Simulator name (e.g., "iPhone 16") |
+| `--bundle-id` | App bundle identifier (derived from `Info.plist` if using `--app-file`) |
+| `--app-file` | Path to a pre-built `.app` bundle or `.ipa` archive (skips build) |
+| `--no-build` | Skip building and installing — assumes the app is already on the simulator |
+
+**What it does:**
+1. Boots the simulator
+2. Builds via `xcodebuild` (unless `--app-file` or `--no-build`)
+3. Installs via `simctl install`
+4. Launches via `simctl launch`
+
+This is the same build/install sequence used by `grantiva ci run`, useful for iterating locally without capturing screenshots.
+
+---
+
 ## `grantiva ci run`
 
 Run the full visual regression pipeline: build, capture, compare, upload.
