@@ -27,7 +27,7 @@ workspace: MyApp.xcworkspace    # If using a workspace
 project: MyApp.xcodeproj        # If not using a workspace
 bundle_id: com.example.myapp    # Derived from binary if --app-file is used
 
-# Screens to capture
+# Screens to capture (VRT)
 screens:
   - name: Home
     path: launch
@@ -43,6 +43,11 @@ screens:
       - tap: "Settings"
       - assert_visible: "Advanced"
       - tap: "Advanced"
+
+# Standalone Maestro flow files to run (functional tests)
+flows:
+  - grantiva-flows/tasks.yaml
+  - grantiva-flows/shopping.yaml
 
 # Diff thresholds
 diff:
@@ -90,6 +95,34 @@ Each screen has a `name` and a `path` that describes how to navigate to it.
 | `run_flow: "path.yaml"` | Include steps from another YAML file |
 
 A screenshot is automatically taken at the end of each screen's path.
+
+## Flows
+
+The `flows:` key lists paths to existing Maestro YAML files that `grantiva run` executes as standalone functional tests, in addition to any `screens:` entries.
+
+```yaml
+flows:
+  - grantiva-flows/tasks.yaml
+  - grantiva-flows/shopping.yaml
+  - grantiva-flows/calendar.yaml
+```
+
+**How it differs from `screens:`**
+
+| | `screens:` | `flows:` |
+|---|---|---|
+| Format | Grantiva DSL | Native Maestro YAML |
+| Purpose | VRT capture targets | Functional / smoke tests |
+| Screenshot | Taken automatically at the end | Wherever `takeScreenshot` appears in the file |
+| Baselines | Compared against stored baselines by `grantiva ci run` | Not compared — pass/fail only |
+
+Paths are resolved relative to the directory containing `grantiva.yml`. Any screenshots taken inside a flow file are saved to `.grantiva/captures/` named `<flowname>-<screenshot>.png`.
+
+`grantiva run` runs all `screens:` first, then each flow in `flows:` order. A runner failure in any flow captures a `simctl` screenshot of the current simulator state for debugging.
+
+<Note>
+`flows:` is only used by `grantiva run`. The `grantiva ci run` pipeline (VRT) only processes `screens:`.
+</Note>
 
 ## Maestro compatibility
 
