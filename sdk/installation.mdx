@@ -69,3 +69,5 @@ In API key mode, the SDK skips real App Attest and returns a synthetic attestati
 ## App Attest capability
 
 No special entitlements are required. App Attest is available on all iOS 14+ devices (real hardware only). The SDK checks availability at runtime and throws `GrantivaError.deviceNotSupported` if unavailable.
+
+> **Note:** While Apple introduced App Attest in iOS 14, the Grantiva SDK requires iOS 18.0+.
