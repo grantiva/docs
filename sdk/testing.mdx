@@ -161,21 +161,21 @@ After decoding the token (Base64URL-decode the middle segment), you will see som
 
 ### `deviceNotSupported`
 
-**Cause:** App Attest is unavailable. Most commonly this is the iOS Simulator, or a very old device without a Secure Enclave.
+**Cause:** App Attest is unavailable on this device — for example, hardware without a Secure Enclave or a region where App Attest is restricted.
 
-**Fix:** Add API key fallback for Simulator builds. See [Simulator Setup](/simulator-setup).
+**Fix:** Gate attestation-required flows so they aren't reached on unsupported hardware, or fall back to a non-attested code path.
 
 ```swift
 catch GrantivaError.deviceNotSupported {
-    // Expected in Simulator — configure API key fallback
+    // Hardware does not support App Attest
 }
 ```
 
 ---
 
-### `simulatorNotConfigured`
+### `simulatorAPIKeyRequired`
 
-**Cause:** Running in the Simulator without providing an API key. The SDK detected the Simulator environment but has no fallback credentials.
+**Cause:** `validateAttestation()` was called in the iOS Simulator without an API key. App Attest is unavailable in the Simulator, so the SDK requires an API key fallback.
 
 **Fix:** Pass an `apiKey` parameter during initialization for Simulator builds:
 
@@ -187,7 +187,7 @@ let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
 #endif
 ```
 
-Get a development API key from **Dashboard → Settings → API Keys**.
+Get a development API key from **Dashboard → Settings → API Keys**. See [Simulator Setup](/simulator-setup) for the full fallback flow.
 
 ---
 
