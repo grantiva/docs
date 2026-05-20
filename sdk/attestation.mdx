@@ -103,8 +103,10 @@ Your backend can decode the JWT to read:
 ```swift
 do {
     let result = try await grantiva.validateAttestation()
+} catch GrantivaError.simulatorAPIKeyRequired {
+    // Running in Simulator without an API key — see Simulator Setup
 } catch GrantivaError.deviceNotSupported {
-    // App Attest unavailable (simulator, old device)
+    // Hardware/region does not support App Attest
 } catch GrantivaError.networkError(let error) {
     // Network issue — retry later
 } catch GrantivaError.validationFailed {
