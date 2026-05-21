@@ -46,7 +46,7 @@ The API is identical — the SDK handles the fallback transparently:
 do {
     let result = try await grantiva.validateAttestation()
     print("Device verified: \(result.isValid)")
-} catch GrantivaError.deviceNotSupported {
+} catch GrantivaError.simulatorAPIKeyRequired {
     // No API key configured — catch this in Simulator builds
     print("Set an API key for Simulator builds")
 } catch {
@@ -74,6 +74,6 @@ Use this path only for development and CI. Never ship API key fallback to the Ap
     Set up full hardware attestation when you have a device available.
   </Card>
   <Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
-    Handle GrantivaError.deviceNotSupported and other errors.
+    Handle GrantivaError.simulatorAPIKeyRequired and all other SDK errors.
   </Card>
 </CardGroup>
