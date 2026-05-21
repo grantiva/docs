@@ -8,7 +8,7 @@ After your iOS app calls `grantiva.validateAttestation()`, it receives a signed 
 ## How it works
 
 1. Your app sends the JWT as a `Bearer` token in the `Authorization` header
-2. Your backend fetches Grantiva's public key from `/api/v1/attestation/public-key`
+2. Your backend fetches Grantiva's public key from `/.well-known/jwks.json`
 3. You verify the JWT signature and expiry locally (no network call per request)
 4. You extract device claims: `risk_score`, `risk_category`, jailbreak status, and any custom claims
 
@@ -38,7 +38,7 @@ npm install jose
 import { createRemoteJWKSet, jwtVerify } from 'jose'
 
 const JWKS = createRemoteJWKSet(
-  new URL('https://api.grantiva.io/api/v1/attestation/public-key')
+  new URL('https://api.grantiva.io/.well-known/jwks.json')
 )
 
 async function verifyGrantivaToken(token) {
@@ -87,7 +87,7 @@ import requests
 import jwt
 from jwt import PyJWKClient
 
-JWKS_URL = "https://api.grantiva.io/api/v1/attestation/public-key"
+JWKS_URL = "https://api.grantiva.io/.well-known/jwks.json"
 
 # Reuse the client across requests — it caches the public key
 jwks_client = PyJWKClient(JWKS_URL)
@@ -131,6 +131,91 @@ def require_attested_device(f):
     return decorated
 ```
 
+## Swift (Vapor)
+
+Uses [`vapor/jwt`](https://github.com/vapor/jwt) which has native JWKS support via `JWKSet`.
+
+```swift
+// Package.swift
+.package(url: "https://github.com/vapor/jwt.git", from: "5.0.0"),
+// target dependency: .product(name: "JWT", package: "jwt")
+```
+
+```swift
+import Vapor
+import JWT
+
+// In configure.swift — fetch and cache Grantiva's public key at startup
+public func configure(_ app: Application) async throws {
+    let jwksURL = URI(string: "https://api.grantiva.io/.well-known/jwks.json")
+    let response = try await app.client.get(jwksURL)
+    let jwks = try response.content.decode(JWKS.self)
+    try await app.jwt.keys.use(jwks: jwks)
+}
+
+// Payload struct matching Grantiva JWT claims
+struct GrantivaPayload: JWTPayload {
+    enum CodingKeys: String, CodingKey {
+        case subject        = "sub"
+        case expiration     = "exp"
+        case issuer         = "iss"
+        case deviceId       = "device_id"
+        case riskScore      = "risk_score"
+        case riskCategory   = "risk_category"
+        case jailbreak      = "jailbreak_detected"
+        case bundleId       = "bundle_id"
+        case teamId         = "team_id"
+        case customClaims   = "custom_claims"
+    }
+
+    let subject: SubjectClaim
+    let expiration: ExpirationClaim
+    let issuer: IssuerClaim
+    let deviceId: String
+    let riskScore: Int?          // nil on Free tier
+    let riskCategory: String     // "trusted" | "suspicious" | "blocked"
+    let jailbreak: Bool
+    let bundleId: String
+    let teamId: String
+    let customClaims: [String: String]?
+
+    func verify(using algorithm: some JWTAlgorithm) async throws {
+        try expiration.verifyNotExpired()
+        guard issuer.value == "grantiva" else {
+            throw JWTError.claimVerificationFailure(failedClaim: issuer, reason: "unexpected issuer")
+        }
+    }
+}
+
+// Middleware — verify token on every authenticated request
+struct GrantivaDeviceMiddleware: AsyncMiddleware {
+    func respond(to request: Request, chainingTo next: any AsyncResponder) async throws -> Response {
+        guard let token = request.headers.bearerAuthorization?.token else {
+            throw Abort(.unauthorized, reason: "Missing Grantiva device token")
+        }
+
+        let payload = try await request.jwt.verify(token, as: GrantivaPayload.self)
+
+        if payload.riskCategory == "blocked" {
+            throw Abort(.forbidden, reason: "Device blocked (risk score: \(payload.riskScore ?? -1))")
+        }
+
+        request.storage[GrantivaPayloadKey.self] = payload
+        return try await next.respond(to: request)
+    }
+}
+
+private struct GrantivaPayloadKey: StorageKey {
+    typealias Value = GrantivaPayload
+}
+
+// Usage in routes
+app.grouped(GrantivaDeviceMiddleware()).get("protected") { req async throws -> String in
+    let device = req.storage[GrantivaPayloadKey.self]!
+    return "Hello attested device \(device.deviceId)"
+}
+```
+
 ## Go
 
 Uses [`golang-jwt/jwt`](https://github.com/golang-jwt/jwt) with JWKS fetching via [`MicahParks/keyfunc`](https://github.com/MicahParks/keyfunc).
@@ -154,7 +239,7 @@ import (
     "github.com/golang-jwt/jwt/v5"
 )
 
-const jwksURL = "https://api.grantiva.io/api/v1/attestation/public-key"
+const jwksURL = "https://api.grantiva.io/.well-known/jwks.json"
 
 type GrantivaClaims struct {
     DeviceID          string         `json:"device_id"`
