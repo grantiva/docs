@@ -37,7 +37,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/grantiva/ios-sdk", from: "1.0.0")
+    .package(url: "https://github.com/grantiva/ios-sdk", from: "2.0.0")
 ]
 ```
 
@@ -61,7 +61,11 @@ That's it. The SDK reads your Bundle ID automatically from `Bundle.main`.
 do {
     let result = try await grantiva.validateAttestation()
     print("Device verified: \(result.isValid)")
-    print("Risk score: \(result.deviceIntelligence.riskScore)")
+    if let score = result.deviceIntelligence.riskScore {
+        print("Risk score: \(score)")  // Pro+ only
+    } else {
+        print("Risk category: \(result.deviceIntelligence.riskCategory)")
+    }
     // Send result.token to your backend as a Bearer token
 } catch {
     print("Attestation failed: \(error)")
