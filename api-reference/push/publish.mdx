@@ -1,0 +1,68 @@
+---
+title: "Publish"
+description: "Publish an event to channels and fan out APNs pushes"
+---
+
+Backend-facing endpoint, authenticated with the app's **secret key** (`grv_sec_`, sent as `Authorization: Bearer` or `X-API-Key`). Never ship the secret key in a client app.
+
+```
+POST /v1/apps/:appID/publish
+```
+
+## Alert push
+
+```json
+{
+  "channel": "order:42:status",
+  "event": "order:shipped",
+  "excludeTokens": ["<hex of originating device>"],
+  "push": {
+    "type": "alert",
+    "title": "Your order shipped",
+    "body": "Arriving Thursday",
+    "badge": 1,
+    "sound": "default",
+    "payload": { "orderId": "42" }
+  }
+}
+```
+
+`payload` is merged at the APNs payload root as custom `userInfo`. Use `channels: ["a", "b"]` instead of `channel` to publish to several channels — a token subscribed to more than one still receives a single push.
+
+## Live Activity push
+
+```json
+{
+  "channel": "delivery:42",
+  "event": "delivery:progress",
+  "push": {
+    "type": "liveactivity",
+    "liveActivityEvent": "update",
+    "activityID": "optional — restrict update/end to one activity",
+    "contentState": { "eta": "12:45", "stop": 3 },
+    "staleDate": "2026-06-11T19:00:00Z",
+    "relevanceScore": 0.9,
+    "alert": { "title": "Almost there", "body": "3 stops away" }
+  }
+}
+```
+
+| `liveActivityEvent` | Routed to | Required fields |
+|---------------------|-----------|-----------------|
+| `start` | `liveactivity-start` tokens | `attributesType`, `attributes`, `contentState` |
+| `update` | `liveactivity-update` tokens (filtered by `activityID` when given) | `contentState` |
+| `end` | `liveactivity-update` tokens | — (`dismissalDate` optional) |
+
+Grantiva sets `apns-push-type: liveactivity`, topic `<bundleID>.push-type.liveactivity`, priority 10, and the payload envelope (`timestamp`, `event`, `content-state`, plus `attributes-type`/`attributes` on start).
+
+## Response
+
+```json
+{ "delivered": 41, "failed": 0, "pruned": 2 }
+```
+
+- `pruned` — subscriptions deleted because APNs returned `410 Unregistered` or `400 BadDeviceToken`.
+- Publishing to a channel with zero subscribers is a **200** with `delivered: 0`.
+- Publishing before the app's APNs credentials are configured returns **409**.
+
+Fan-out is concurrent (capped at 16 in-flight APNs sends) and synchronous within the request.

@@ -76,6 +76,8 @@ POST /api/v1/feedback/features
 | `description` | `string` | Yes | 10–5,000 characters |
 | `submitterId` | `string` | Yes | User or device identifier |
 | `deviceHash` | `string` | No | Device hash for deduplication |
+| `pushToken` | `string` | No | Hex APNs token — subscribes this device to the request's thread channel so it's notified of admin replies. See [Push](/push/overview#feedback-push-integration) |
+| `pushEnvironment` | `string` | No | `sandbox` or `production` |
 
 ### Response
 

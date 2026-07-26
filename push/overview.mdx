@@ -1,0 +1,54 @@
+---
+title: "Push Notifications"
+description: "Channel-based APNs push fan-out: publish events from your backend, deliver to every subscribed device"
+---
+
+Grantiva Push is a channel-based publish/subscribe service for Apple push notifications. Your backend publishes named events to **channels**; Grantiva delivers APNs pushes — standard alerts and **Live Activities** — to every device token subscribed to those channels. You never store device tokens or talk to APNs yourself.
+
+## Concepts
+
+- **App** — a registered application with its own APNs `.p8` credentials and API keys. Push apps are provisioned by Grantiva and appear in your org dashboard (contact [support](mailto:support@grantiva.io) to register one). APNs credentials are stored AES-256-GCM encrypted and can be added or rotated after registration.
+- **Channel** — an opaque string your app chooses (`order:42:status`, `chat:<uuid>`, `broadcast`). Grantiva assigns no meaning to channels; they're created implicitly on first subscribe and matched exactly (no wildcards in v1). Max 255 printable characters.
+- **Subscription** — a device token subscribed to a channel. Three token types: `alert` (standard push), `liveactivity-start` (push-to-start, rotates), and `liveactivity-update` (per-activity, requires `activityID`).
+- **Event** — a publish: an event name plus a push spec, fanned out to all subscribed tokens of the relevant type. A token subscribed to several published channels receives one push.
+
+## API keys
+
+Each push app has two keys, issued once at creation (stored hashed — save them):
+
+| Key | Prefix | Sent as | May do |
+|-----|--------|---------|--------|
+| Public | `grv_pub_` | `X-API-Key` or `Authorization: Bearer` | Manage subscriptions (safe to ship in your app) |
+| Secret | `grv_sec_` | `Authorization: Bearer` or `X-API-Key` | Publish + manage subscriptions (server-side only) |
+
+Subscription endpoints are rate-limited to **240 requests/min per key**.
+
+## Typical flow
+
+1. **Device registers** — your app obtains its APNs token and calls [`POST /v1/apps/:appID/subscriptions`](/api-reference/push/subscriptions) with the public key, a channel, and the token.
+2. **Backend publishes** — when something happens, your server calls [`POST /v1/apps/:appID/publish`](/api-reference/push/publish) with the secret key, the channel(s), and an alert or Live Activity spec.
+3. **Grantiva fans out** — every subscribed device receives the push. Dead tokens (APNs `410 Unregistered` / `400 BadDeviceToken`) are pruned automatically.
+
+## Live Activities
+
+The publish API speaks Live Activities natively: `start` events route to push-to-start tokens, `update`/`end` to per-activity update tokens (optionally filtered by `activityID`). Grantiva sets the correct `apns-push-type`, topic (`<bundleID>.push-type.liveactivity`), and payload envelope (`timestamp`, `event`, `content-state`, `attributes-type`) for you.
+
+Push-to-start tokens rotate — pass `previousToken` when re-subscribing and Grantiva cleans up the stale registrations.
+
+## Feedback push integration
+
+The [in-app feedback](/quickstart-feedback) feature rides this service: pass optional `pushToken` and `pushEnvironment` fields when filing a feature request or comment (`POST /api/v1/feedback/features`, `POST /api/v1/feedback/features/:id/comments`) and the device is auto-subscribed to that thread's channel (`feedback:feature:<id>`). When an org admin replies from the dashboard, every subscribed device gets an alert push (`event: feedback:admin-reply`).
+
+Link which push app delivers feedback pushes with `PUT /api/v1/org/feedback-push-app` (admin session, body `{ "pushAppID": "<uuid>" | null }`). While unlinked, feedback push is a silent no-op and email notifications still fire.
+
+<Note>The iOS SDK does not yet expose a push-token API for feedback calls — pass the fields at the REST level for now.</Note>
+
+## Org dashboard
+
+- `GET /api/v1/org/push-apps` — your org's push apps with APNs status, subscription/channel counts, and key prefixes (never raw keys)
+- `GET /api/v1/org/push-apps/:appID` — one app
+
+## API reference
+
+- [Subscriptions](/api-reference/push/subscriptions) — device-facing subscribe/list/unsubscribe
+- [Publish](/api-reference/push/publish) — backend-facing event fan-out
