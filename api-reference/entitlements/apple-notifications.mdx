@@ -1,0 +1,33 @@
+---
+title: "Apple Server Notifications"
+description: "Inbound endpoint for App Store Server Notifications v2"
+---
+
+```
+POST /webhooks/apple/app-store-notifications
+```
+
+Point your app's **App Store Server Notifications v2** URL (production and sandbox) at this endpoint in App Store Connect:
+
+```
+https://api.grantiva.io/webhooks/apple/app-store-notifications
+```
+
+There is nothing per-organization in the URL: Grantiva verifies the notification's JWS signature against Apple's root CA (Apple Root CA-G3) and routes it to your organization by matching the notification's bundle ID against your [entitlement configuration](/api-reference/entitlements/config).
+
+## What it processes
+
+Subscription lifecycle notifications (subscribe, renew, expire, refund, revoke, grace-period events) for product ids present in your `apple.products` mapping. The sharing unit is resolved from the transaction's `appAccountToken` — which is why your app must set it at purchase time (see the [quick start](/quickstart-subscription-claims)).
+
+On each accepted event Grantiva updates the Subject's entitlement, which changes `custom_claims.subscription` in subsequently minted JWTs, and fires the corresponding [`subscription.*` webhooks](/concepts/webhooks#subscription-events).
+
+## Response semantics
+
+| Status | When |
+|--------|------|
+| 200 | Event processed — **or** permanently unprocessable (unknown bundle ID, ingestion disabled, org not Enterprise, missing `appAccountToken`, unmapped product, replayed notification, bad signature) |
+| 5xx | Transient server error — Apple will retry |
+
+Permanent conditions intentionally return 200 so Apple stops retrying them. Replay protection is keyed on Apple's `notificationUUID`.
+
+<Note>Sandbox notifications are ingested too, producing claims with `"environment": "sandbox"`. Filter on `environment` in production backends.</Note>

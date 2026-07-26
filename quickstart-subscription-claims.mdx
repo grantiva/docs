@@ -1,0 +1,105 @@
+---
+title: "Subscription Claims Quick Start"
+description: "Gate backend features on Apple IAP or Stripe subscription state using only the attestation JWT"
+---
+
+By the end of this guide, your backend will authorize premium features by reading `custom_claims.subscription` from the attestation JWT — with subscription state flowing in automatically from Apple and/or Stripe, shared across a whole family, and no API key anywhere.
+
+## Prerequisites
+
+- **Enterprise plan** (entitlement ingestion is Enterprise-only)
+- Grantiva SDK **2.1.0+** installed and attestation working ([Quick Start](/quickstart))
+- Admin access to your Grantiva dashboard
+- An Apple app with In-App Purchases and/or a Stripe account selling subscriptions
+
+## 1. Map your products to tiers
+
+Configure ingestion once via `PUT /api/v1/org/entitlement-config` (dashboard session, admin role):
+
+```json
+{
+  "enabled": true,
+  "apple": {
+    "bundleId": "com.example.app",
+    "products": {
+      "com.example.plus.monthly": { "tier": "plus", "interval": "monthly" },
+      "com.example.plus.annual":  { "tier": "plus", "interval": "annual" }
+    }
+  },
+  "stripe": {
+    "signingSecret": "whsec_...",
+    "prices": {
+      "price_1AbCdE": { "tier": "plus", "interval": "monthly" }
+    }
+  }
+}
+```
+
+`tier` values are yours — Grantiva passes them through to the claim verbatim. See the [config API reference](/api-reference/entitlements/config) for details.
+
+## 2. Point Apple and Stripe at Grantiva
+
+- **Apple**: In App Store Connect, set your **App Store Server Notifications v2** production (and sandbox) URL to `https://api.grantiva.io/webhooks/apple/app-store-notifications`.
+- **Stripe**: Add a webhook endpoint in your Stripe dashboard pointing at the per-org path returned by `GET /api/v1/org/entitlement-config` (`stripeWebhookPath`), subscribed to `checkout.session.completed` and `customer.subscription.*` events. Use that endpoint's signing secret as `signingSecret` in step 1.
+
+## 3. Mint a sharing-unit id and use it everywhere
+
+Create one stable **UUID string** per family/household in your system. The same value goes to three places:
+
+```swift
+let familyId = household.grantivaSubjectId   // a stable UUID string you persist
+
+// a) Tell Grantiva on every member's device (SDK 2.1.0+)
+grantiva.setSubjectId(familyId)
+
+// b) Attach it to Apple purchases
+let result = try await product.purchase(options: [
+    .appAccountToken(UUID(uuidString: familyId)!)
+])
+```
+
+```javascript
+// c) Attach it to Stripe Checkout (web payers)
+const session = await stripe.checkout.sessions.create({
+  mode: "subscription",
+  client_reference_id: familyId,
+  line_items: [{ price: "price_1AbCdE", quantity: 1 }],
+  metadata: { grantiva_price_id: "price_1AbCdE" },
+  // ...
+});
+```
+
+Call `setSubjectId` before `validateAttestation()` (or any time — the id rides the next attest/refresh). Call `clearSubjectId()` if the device leaves the household; omitting the id on refresh keeps the existing link.
+
+<Warning>Apple requires `appAccountToken` to be a UUID, so the sharing-unit id must be a UUID string.</Warning>
+
+## 4. Gate features on your backend
+
+Verify the JWT as usual ([Backend JWT Verification](/backend-verification)) and read the claim:
+
+```javascript
+const claims = await verifyGrantivaJWT(token);   // RS256 against Grantiva's JWKS
+const sub = claims.custom_claims?.subscription;
+
+if (sub?.is_active && sub.environment === "production") {
+  grantAccess(sub.tier);      // "plus", etc. — your tier strings
+} else {
+  grantAccess("free");        // absent claim ⇒ free
+}
+```
+
+That's it. When someone in the family subscribes, cancels, or is refunded, Apple/Stripe notify Grantiva, and every family device's next JWT carries the updated claim.
+
+## 5. Optional: instant invalidation
+
+JWTs refresh within an hour on their own. If you cache authorization state, subscribe to the `subscription.changed` / `subscription.expired` / `subscription.refunded` [webhooks](/concepts/webhooks#subscription-events) and evict your cache for the delivered `subject_id`. Treat the webhook as a nudge — the JWT remains the source of truth.
+
+## Sandbox testing
+
+Sandbox purchases flow through with `"environment": "sandbox"` in the claim. Keep the check from step 4 (`environment === "production"`) in production backends, and relax it in staging.
+
+## Next steps
+
+- [Subscription Claims concepts](/concepts/subscription-claims) — claim shape, multi-entitlement resolution, reserved key rules
+- [Entitlement config API](/api-reference/entitlements/config)
+- [Apple notifications endpoint](/api-reference/entitlements/apple-notifications) · [Stripe webhook endpoint](/api-reference/entitlements/stripe-webhook)

@@ -22,7 +22,8 @@
               "quickstart-feedback",
               "quickstart-flags",
               "quickstart-vrt",
-              "quickstart-webhooks"
+              "quickstart-webhooks",
+              "quickstart-subscription-claims"
             ]
           },
           {
@@ -52,6 +53,7 @@
               "concepts/attestation",
               "concepts/risk-scoring",
               "concepts/custom-claims",
+              "concepts/subscription-claims",
               "concepts/webhooks",
               "concepts/security",
               "concepts/vrt"
@@ -114,6 +116,14 @@
             "group": "Webhooks",
             "pages": [
               "api-reference/webhooks/endpoints"
+            ]
+          },
+          {
+            "group": "Entitlements",
+            "pages": [
+              "api-reference/entitlements/config",
+              "api-reference/entitlements/apple-notifications",
+              "api-reference/entitlements/stripe-webhook"
             ]
           },
           {

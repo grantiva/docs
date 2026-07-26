@@ -51,6 +51,7 @@ POST /api/v1/attestation/validate
 | `appBuildNumber` | `string` | No | Build number |
 | `platform` | `string` | No | Platform (iOS, macOS) |
 | `deviceFingerprint` | `string` | No | Stable hashed device fingerprint (sent by SDK 2.0.4+). Used as a secondary key for MAD counting so a device whose App Attest key is regenerated mid-month still counts once toward billing |
+| `subjectId` | `string` | No | Opaque sharing-unit id (family/household UUID) linking this device to a subscription entitlement. Blank values are treated as absent. Also accepted on `/refresh`, where omitting it keeps the existing link. See [Subscription Claims](/concepts/subscription-claims) |
 
 ## Response
 
