@@ -24,6 +24,8 @@ All SDK operations throw `GrantivaError`, which conforms to `LocalizedError`.
 | `reattestRequired` | Server reports attestation key has drifted (rpIdHash or signature mismatch) | The SDK self-heals: it clears the cached keyId and re-runs attestation automatically. Avoid wrapping SDK calls in retry loops that re-call `validateAttestation()` — the SDK already retries once internally |
 | `serverError(reason: String)` | Server-side validation failure with a developer-readable reason | Log `error.reason` for diagnostics; do not show the raw reason to end users |
 | `keyAlreadyAttested` | Apple's DCAppAttestService rejected `attestKey` because the keyId was already attested in a prior session | The SDK self-heals by clearing the stored keyId and generating a fresh one. If the retry also fails, this error surfaces to the caller — typically after a re-install or Keychain wipe |
+| `assertionKeyInvalid` (2.0.5+) | Apple rejected `generateAssertion()` because the stored keyId references a key that can no longer produce assertions (backup restore, device transfer, drifted local state) | The SDK self-heals: it clears the stored keyId and tokens and runs one full re-attestation. Surfaces only if that also fails |
+| `limitExceeded(limit: Int, current: Int)` (2.1.0+) | Your organization's Monthly Active Device limit was reached and the grace period has expired (HTTP 402 from the server) | Existing devices keep working; only new devices hit this. Upgrade your plan, or degrade gracefully on-device |
 
 ## Example
 

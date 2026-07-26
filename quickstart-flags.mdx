@@ -6,6 +6,7 @@ description: "Toggle features remotely in your iOS app without app updates"
 ## Prerequisites
 
 - Grantiva SDK installed ([Installation](/sdk/installation))
+- Device attestation working ([Quick Start](/quickstart)) — flag endpoints authenticate with the attestation JWT, so call `validateAttestation()` before reading flags (in the Simulator, use [API key mode](/simulator-setup) instead)
 - At least one flag created in the [dashboard](https://grantiva.io/dashboard)
 
 ## 1. Create a flag in the dashboard

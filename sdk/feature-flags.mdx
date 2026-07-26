@@ -5,6 +5,10 @@ description: "Toggle features remotely with environment-aware flags"
 
 Feature flags let you control feature rollout from the Grantiva dashboard without app updates. Access them via `grantiva.flags`.
 
+<Note>
+Flag endpoints require authentication: run `validateAttestation()` once before reading flags (the SDK then attaches the attestation JWT automatically). In the Simulator, initialize the SDK with an API key — see [Simulator Setup](/simulator-setup). Requests without either receive a 401.
+</Note>
+
 ## Get all flags
 
 ```swift
@@ -78,6 +82,16 @@ await grantiva.flags.clearCache()
 ```
 
 The cache is automatically cleared when user identity changes via `grantiva.identify()`.
+
+## Live updates (SSE)
+
+The SDK can hold a Server-Sent Events stream open against `GET /api/v1/flags/stream` so flag changes propagate to devices in seconds instead of waiting for the cache TTL.
+
+A few behaviors worth knowing (SDK 2.0.6+):
+
+- The server emits a `: keepalive` comment every 20 seconds; the SDK's idle timeout is 75 seconds (~3 missed keepalives), so dead connections are detected and reconnected without churning on healthy quiet streams.
+- Reconnect backoff resets after a healthy connection (60s+ uptime) drops, so devices on flaky networks don't accumulate permanent delays.
+- The stream is scoped to the current `environment`.
 
 ## Tier limits
 

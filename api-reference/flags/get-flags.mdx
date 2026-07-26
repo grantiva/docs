@@ -15,6 +15,11 @@ GET /api/v1/flags
 |--------|----------|-------------|
 | `X-Bundle-ID` | Yes | App bundle identifier |
 | `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side/simulator callers. Identity headers alone return 401. See [Authentication](/api-reference/authentication) |
+
+### Rate limit headers
+
+Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`. 429 responses include `Retry-After`.
 
 ### Query parameters
 

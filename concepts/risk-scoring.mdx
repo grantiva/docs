@@ -29,12 +29,16 @@ On Pro, Business, and Enterprise plans, the numeric score maps to these levels:
 
 The score considers multiple signals:
 
-- **Jailbreak detection** — Is the device jailbroken or rooted?
+- **Jailbreak detection** — Actual jailbreak/root signals. The strongest single factor.
+- **Development builds** — Debug, Xcode, and TestFlight installs are scored as a separate, lower-weight signal than jailbreak. A dev build alone doesn't mark a device as compromised — it's expected during integration.
 - **Device integrity** — Does the attestation pass Apple's checks?
-- **Attestation history** — Is this device's behavior consistent?
-- **Anomaly detection** — Unusual patterns (rapid attestations, geographic jumps, etc.)
-- **Device age** — First-time vs. returning devices
-- **OS version** — Known vulnerable OS versions
+- **Suspicious activity history** — Past suspicious events raise the score, with **recency decay**: each clean week forgives one past event, so a device that stays clean earns its trust back over time.
+- **Device age** — New devices (fewer than 3 attestations) carry a temporary penalty that clears as attestation history builds.
+- **Anomaly detection** — Rapid country changes, app version downgrades, VPN/proxy networks, device model inconsistencies, and unusual timing patterns.
+
+<Info>
+Scores are dynamic in both directions: they rise on suspicious signals and fall again as a device builds a clean streak. Don't persist a device's score long-term — read it fresh from each attestation.
+</Info>
 
 ## Using risk data
 
