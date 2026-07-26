@@ -1,0 +1,61 @@
+---
+title: "Heartbeat"
+description: "Report device liveness for live device counting"
+---
+
+<Note>This endpoint is called automatically by the SDK on a fixed interval. You typically don't need to call it directly.</Note>
+
+Heartbeats power the live device count in the dashboard and record per-device `last seen`, app state, and SDK version.
+
+## Request
+
+```
+POST /api/v1/heartbeat
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side/simulator callers. Identity headers alone return 401. See [Authentication](/api-reference/authentication) |
+
+### Body
+
+All fields are optional for JWT-authenticated devices. `deviceId` is required when authenticating with an API key (no JWT to identify the device).
+
+```json
+{
+  "appState": "foreground",
+  "sdkVersion": "2.1.0",
+  "deviceId": "sim-device-01"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `appState` | `string` | No | Current app state (e.g. `foreground`, `background`) |
+| `sdkVersion` | `string` | No | SDK version string |
+| `deviceId` | `string` | API key auth only | Device identifier. Ignored when a JWT is present — the JWT's key ID identifies the device |
+
+## Response
+
+```json
+{
+  "status": "ok",
+  "nextHeartbeatSeconds": 120
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `string` | Always `ok` on success |
+| `nextHeartbeatSeconds` | `integer` | Interval the client should wait before the next heartbeat |
+
+## Errors
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 400 | `bad_request` | No device identifier — provide an attestation JWT or a `deviceId` in the body |
+| 401 | `unauthorized` | Missing or invalid JWT/API key |

@@ -1,0 +1,109 @@
+---
+title: "Health"
+description: "Service health and status endpoints"
+---
+
+Grantiva exposes three health endpoints. None require authentication.
+
+## Basic health
+
+```
+GET /health
+```
+
+Minimal liveness check — no database access.
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "commit": "1ab5619"
+}
+```
+
+## Detailed health
+
+```
+GET /api/v1/health
+```
+
+Database check with latency, plus an optional tenant configuration check. Useful as an SDK pre-flight or for status pages.
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | No | With `X-Team-ID`, adds a tenant configuration check to the response |
+| `X-Team-ID` | No | With `X-Bundle-ID`, adds a tenant configuration check to the response |
+
+### Response
+
+```json
+{
+  "status": "ok",
+  "version": "1.0",
+  "services": {
+    "api": { "status": "ok", "latencyMs": 0 },
+    "db": { "status": "ok", "latencyMs": 3 }
+  },
+  "timestamp": "2026-07-26T12:00:00Z",
+  "commit": "1ab5619",
+  "tenant": {
+    "found": true,
+    "appRegistered": true,
+    "attestationEnabled": true,
+    "hint": null
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | `string` | `ok`, or `degraded` when the database check fails |
+| `version` | `string` | API version |
+| `services.api` | `object` | Always `ok` with `latencyMs: 0` |
+| `services.db` | `object` | Database `SELECT 1` result. `status` is `degraded` with `latencyMs: -1` on failure |
+| `commit` | `string` | Deployed commit SHA |
+| `tenant` | `object` | Only present when both identity headers are sent |
+
+### Tenant check fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `found` | `boolean` | An app matching the Bundle ID + Team ID pair exists |
+| `appRegistered` | `boolean` | Same as `found` |
+| `attestationEnabled` | `boolean` | `true` when both the app and its organization are active. `null` when the app was not found |
+| `hint` | `string` | Troubleshooting hint when the app was not found |
+
+The tenant check returns boolean flags only — it never exposes plan, keys, or billing data.
+
+## Component status
+
+```
+GET /api/v1/health/status
+```
+
+Per-component health for the database, attestation (Apple root CA), feature flags, and JWT signing. Returns **200** when all components are healthy and **503** when any component is degraded.
+
+```json
+{
+  "status": "healthy",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "components": {
+    "database": { "status": "healthy", "latencyMs": 3 },
+    "attestation": { "status": "healthy" },
+    "featureFlags": { "status": "healthy" },
+    "jwtSigning": { "status": "healthy" }
+  },
+  "version": "1ab5619"
+}
+```
+
+| Component | Check |
+|-----------|-------|
+| `database` | `SELECT 1` round-trip; reports `latencyMs` |
+| `attestation` | Apple App Attest root CA certificate is decodable |
+| `featureFlags` | Feature flag table is queryable |
+| `jwtSigning` | Full RS256 sign + verify cycle succeeds |
+
+Each component reports `status` as `healthy` or `unhealthy`. The top-level `status` is `healthy` or `degraded`, and `version` is the deployed commit SHA.

@@ -1,0 +1,154 @@
+---
+title: "Webhook Deliveries & Testing"
+description: "Test webhook endpoints, browse delivery history, and retry failed deliveries"
+---
+
+<Info>Webhooks require the **Pro** plan or higher. For creating, updating, and deleting webhook endpoints, see [Webhook Endpoints](/api-reference/webhooks/endpoints).</Info>
+
+## Authentication
+
+All endpoints on this page require a dashboard session (cookie-based) with organization context. Sending a test delivery requires **Admin** role or above; browsing deliveries and retrying them is available to any organization member on a Pro+ plan.
+
+---
+
+## Send a test delivery
+
+```
+POST /api/v1/org/webhooks/:id/test
+```
+
+Requires **Admin** role. Synchronously delivers a synthetic `attestation.completed` event to the endpoint's configured URL and returns the outcome. The test delivery:
+
+- is signed with the endpoint's secret (`X-Grantiva-Signature`), exactly like a real delivery
+- does **not** create a delivery record and is **not** retried on failure
+- includes `"is_test": "true"` in the payload data
+
+**Test payload sent to your endpoint**
+
+```json
+{
+  "event": "attestation.completed",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "key_id": "test_key_550e8400",
+    "device_id": "test_device_550e8400",
+    "device_model": "iPhone16,2",
+    "bundle_id": "com.example.app",
+    "risk_score": "5",
+    "attestation_id": "a3f1c9e2-...",
+    "is_test": "true"
+  }
+}
+```
+
+Headers on the outgoing request:
+
+| Header | Value |
+|--------|-------|
+| `X-Grantiva-Signature` | HMAC-SHA256 of the raw body, signed with the endpoint secret |
+| `X-Grantiva-Event` | `attestation.completed` |
+| `X-Grantiva-Delivery` | `test-<uuid>` |
+| `User-Agent` | `Grantiva-Webhooks/1.0` |
+
+**Response** — `200 OK`
+
+```json
+{
+  "success": true,
+  "httpStatus": 200,
+  "responseBody": "ok",
+  "latencyMs": 142,
+  "error": null
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | `true` when your endpoint returned a 2xx status |
+| `httpStatus` | integer \| null | HTTP status your endpoint returned; `null` if the connection failed |
+| `responseBody` | string \| null | First 200 characters of your endpoint's response body |
+| `latencyMs` | integer | Round-trip latency in milliseconds |
+| `error` | string \| null | `"HTTP <status>"` for non-2xx responses, or the transport error message |
+
+---
+
+## List deliveries
+
+```
+GET /api/v1/org/webhooks/:id/deliveries
+```
+
+Paginated delivery history for a webhook endpoint, newest first.
+
+**Query parameters**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `page` | 1 | Page number |
+| `per` | 20 | Items per page (max 100) |
+
+**Response**
+
+```json
+{
+  "items": [
+    {
+      "id": "7f3e2a10-1b2c-4d5e-8f90-112233445566",
+      "webhookId": "550e8400-e29b-41d4-a716-446655440000",
+      "eventType": "attestation.completed",
+      "status": "success",
+      "httpStatus": 200,
+      "responseBody": "ok",
+      "error": null,
+      "attemptCount": 1,
+      "nextRetryAt": null,
+      "deliveredAt": "2026-07-26T12:00:03Z",
+      "createdAt": "2026-07-26T12:00:02Z"
+    }
+  ],
+  "metadata": {
+    "page": 1,
+    "per": 20,
+    "total": 42
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `pending`, `success`, or `failed` |
+| `httpStatus` | integer \| null | Last HTTP status returned by your endpoint |
+| `responseBody` | string \| null | Truncated response body from the last attempt |
+| `error` | string \| null | Last error message, if any |
+| `attemptCount` | integer | Delivery attempts so far (automatic retries: up to 3 attempts with 1 min / 5 min / 30 min backoff) |
+| `nextRetryAt` | string \| null | When the next automatic retry is scheduled |
+| `deliveredAt` | string \| null | When the delivery succeeded |
+
+---
+
+## Retry a delivery
+
+```
+POST /api/v1/org/webhooks/:id/deliveries/:deliveryId/retry
+```
+
+Manually re-sends a delivery with the original payload. The delivery is reset to `pending` with `attemptCount` back to `0`, giving it a fresh automatic-retry budget, and the HTTP call fires in the background — the response reflects the reset state, not the outcome of the new attempt. Poll the deliveries list to see the result.
+
+**Response** — `200 OK`
+
+Returns the delivery object (same shape as the list items) with `status: "pending"` and `attemptCount: 0`.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 403 | Organization is on the Free plan |
+| 404 | Webhook or delivery not found in this organization |
+| 422 | The webhook endpoint is inactive — re-enable it before retrying |
+
+---
+
+## See also
+
+- [Webhook Endpoints](/api-reference/webhooks/endpoints) — create, update, delete endpoints, signature verification
+- [Webhooks Concepts](/concepts/webhooks) — event payloads and delivery semantics

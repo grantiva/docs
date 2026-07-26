@@ -1,0 +1,335 @@
+---
+title: "Custom Claims"
+description: "Manage custom JWT claim definitions injected into attestation tokens"
+---
+
+Custom claims are values Grantiva injects into the JWT minted after successful attestation. Define them once here; every subsequent token for your organization carries them. See [Custom Claims Concepts](/concepts/custom-claims) for how each claim type is evaluated.
+
+## Authentication
+
+All endpoints require a dashboard session (cookie-based) and organization membership.
+
+- **Read and test operations** (list, get, test, preview): any organization member.
+- **Write operations** (create, update, delete, bulk, reorder): **Admin** role or above.
+
+## Claim definition fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `claimKey` | string | JWT claim key. Must start with a letter; letters, numbers, and underscores only. Unique per organization. `subscription` is [reserved](#reserved-keys) |
+| `claimName` | string | Human-readable display name |
+| `claimType` | string | `static`, `conditional`, `dynamic`, or `external` (Enterprise only) |
+| `dataType` | string | `string`, `number`, `boolean`, `array`, `object`, or `date` |
+| `description` | string \| null | Optional description |
+| `priority` | integer | Evaluation/sort order (lower first) |
+| `isActive` | boolean | Inactive claims are not evaluated and do not count toward tier limits |
+| `staticValue` | string \| null | Required when `claimType` is `static` |
+| `conditionalRules` | object[] \| null | Required when `claimType` is `conditional` |
+| `dynamicExpression` | string \| null | Required when `claimType` is `dynamic` |
+| `externalConfig` | object \| null | Required when `claimType` is `external` |
+| `validationRules` | object \| null | Optional output validation |
+
+### Conditional rules
+
+Each entry in `conditionalRules`:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "operator": "AND",
+  "conditions": [
+    { "field": "risk_score", "operator": "less_than", "value": "20" },
+    { "field": "jailbreak_detected", "operator": "equals", "value": "false" }
+  ],
+  "value": "trusted",
+  "priority": 0
+}
+```
+
+- `operator` — `AND` or `OR`, joining the conditions.
+- `field` — one of `device_model`, `os_version`, `app_version`, `risk_score`, `attestation_count`, `country`, `jailbreak_detected`, `device_integrity`, `first_seen_days`, `suspicious_events`.
+- Condition `operator` — one of `equals`, `not_equals`, `greater_than`, `less_than`, `greater_than_or_equal`, `less_than_or_equal`, `contains`, `not_contains`, `starts_with`, `ends_with`, `regex`, `in_list`, `not_in_list`.
+
+### External config (Enterprise)
+
+```json
+{
+  "endpoint": "https://api.example.com/entitlements",
+  "method": "GET",
+  "headers": { "X-Api-Version": "2" },
+  "queryParameters": { "source": "grantiva" },
+  "bodyTemplate": null,
+  "responseMapping": {
+    "jsonPath": "$.tier",
+    "defaultValue": "free",
+    "transformExpression": null
+  },
+  "cacheSeconds": 300,
+  "timeoutSeconds": 5,
+  "retryCount": 1,
+  "authentication": {
+    "type": "bearer",
+    "credentials": { "token": "..." }
+  }
+}
+```
+
+`authentication.type` is one of `basic`, `bearer`, `api_key`, `oauth2`.
+
+### Validation rules
+
+```json
+{
+  "required": true,
+  "minLength": 1,
+  "maxLength": 64,
+  "pattern": null,
+  "minValue": null,
+  "maxValue": null,
+  "allowedValues": ["free", "pro", "premium"],
+  "customValidation": null
+}
+```
+
+### Reserved keys
+
+`subscription` (any casing) is reserved — it is managed by Grantiva's entitlement ingestion (Apple IAP / Stripe) and injected into tokens automatically. Creating a claim with this key returns `400 Bad Request`. See [Subscription Claims](/concepts/subscription-claims).
+
+---
+
+## List claims
+
+```
+GET /api/v1/claims
+```
+
+Returns all claim definitions for your organization, sorted by priority then key.
+
+**Response**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "claimKey": "user_tier",
+    "claimName": "User Tier",
+    "claimType": "conditional",
+    "dataType": "string",
+    "description": "Trust tier derived from risk score",
+    "isActive": true,
+    "priority": 0,
+    "configuration": {
+      "staticValue": null,
+      "conditionalRules": [
+        {
+          "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+          "operator": "AND",
+          "conditions": [
+            { "field": "risk_score", "operator": "less_than", "value": "20" }
+          ],
+          "value": "trusted",
+          "priority": 0
+        }
+      ],
+      "dynamicExpression": null,
+      "externalConfig": null,
+      "validationRules": null
+    },
+    "createdAt": "2026-03-01T12:00:00Z",
+    "updatedAt": "2026-03-10T08:30:00Z"
+  }
+]
+```
+
+## Get a claim
+
+```
+GET /api/v1/claims/:claimID
+```
+
+Returns a single claim definition (same shape as list entries).
+
+## Create a claim
+
+```
+POST /api/v1/claims
+```
+
+Requires **Admin** role.
+
+**Request body**
+
+```json
+{
+  "claimKey": "user_tier",
+  "claimName": "User Tier",
+  "claimType": "static",
+  "dataType": "string",
+  "description": "Fixed tier label",
+  "priority": 0,
+  "isActive": true,
+  "staticValue": "premium"
+}
+```
+
+Include exactly the type-specific field your `claimType` requires (`staticValue`, `conditionalRules`, `dynamicExpression`, or `externalConfig`). `validationRules` is optional for all types.
+
+**Response** — the created claim (same shape as list entries).
+
+## Update a claim
+
+```
+PUT /api/v1/claims/:claimID
+```
+
+Requires **Admin** role. All fields optional; `claimKey` and `claimType` cannot be changed. Only the configuration field matching the claim's existing type is applied.
+
+```json
+{
+  "claimName": "Renamed claim",
+  "isActive": false,
+  "staticValue": "standard"
+}
+```
+
+## Delete a claim
+
+```
+DELETE /api/v1/claims/:claimID
+```
+
+Requires **Admin** role.
+
+**Response** — `204 No Content`
+
+## Bulk create
+
+```
+POST /api/v1/claims/bulk
+```
+
+Requires **Admin** role. Body is a JSON **array** of create requests. All entries are validated first; the batch fails as a whole if the total would exceed your tier's claim limit. Not available on the Free tier.
+
+**Response** — array of created claims.
+
+## Reorder claims
+
+```
+PUT /api/v1/claims/reorder
+```
+
+Requires **Admin** role.
+
+**Request body**
+
+```json
+{ "claimIds": ["550e8400-...", "6f9619ff-..."] }
+```
+
+Array index becomes the new priority. IDs not found (or not owned by your organization) are skipped. Updates run in a single transaction.
+
+**Response** — `204 No Content`
+
+## Test a claim configuration
+
+```
+POST /api/v1/claims/test
+```
+
+Evaluates an **unsaved** claim configuration against a simulated device — nothing is persisted. Any member can call this.
+
+**Request body**
+
+```json
+{
+  "claimConfiguration": {
+    "claimKey": "user_tier",
+    "claimName": "User Tier",
+    "claimType": "conditional",
+    "dataType": "string",
+    "conditionalRules": [
+      {
+        "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+        "operator": "AND",
+        "conditions": [
+          { "field": "risk_score", "operator": "less_than", "value": "20" }
+        ],
+        "value": "trusted",
+        "priority": 0
+      }
+    ]
+  },
+  "testContext": {
+    "deviceProfile": {
+      "keyId": "test-device-1",
+      "deviceModel": "iPhone15,2",
+      "osVersion": "18.0",
+      "appVersion": "2.1.0",
+      "riskScore": 12,
+      "attestationCount": 5,
+      "jailbreakDetected": false,
+      "country": "US"
+    },
+    "additionalData": { "plan": "monthly" }
+  }
+}
+```
+
+`deviceProfile.keyId`, `riskScore`, `attestationCount`, and `jailbreakDetected` are required when a profile is provided; the other profile fields are optional.
+
+**Response**
+
+```json
+{
+  "claimKey": "user_tier",
+  "evaluatedValue": "trusted",
+  "dataType": "string",
+  "evaluationTime": 1.42,
+  "errors": null
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `claimKey` | string | The tested claim key |
+| `evaluatedValue` | string \| null | The value the claim would produce |
+| `dataType` | string | Data type of the evaluated value |
+| `evaluationTime` | number | Evaluation time in milliseconds |
+| `errors` | string[] \| null | Evaluation errors, if any |
+
+## Preview a saved claim
+
+```
+POST /api/v1/claims/:claimID/preview
+```
+
+Same as [test](#test-a-claim-configuration), but evaluates an existing saved claim — the body contains only `testContext`. Returns the same response shape.
+
+---
+
+## Tier limits
+
+Limits count **active** claims only.
+
+| Tier | Max custom claims | Claim types |
+|------|-------------------|-------------|
+| Free | 1 | `static` only. Bulk create unavailable |
+| Pro | 5 | `static`, `conditional`, `dynamic` |
+| Business | 10 | `static`, `conditional`, `dynamic` |
+| Enterprise | 20 | All, including `external` |
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Invalid `claimKey` format, reserved `subscription` key, or missing type-specific configuration |
+| 401 | Not authenticated |
+| 403 | Insufficient role, tier claim limit reached, claim type not available on your tier, or `external` claims without Enterprise |
+| 404 | Claim not found (or not owned by your organization) |
+| 409 | A claim with that `claimKey` already exists |
+
+## See also
+
+- [Custom Claims Concepts](/concepts/custom-claims) — evaluation model and tier features
+- [Subscription Claims](/concepts/subscription-claims) — the reserved `subscription` claim
+- [Validate Attestation](/api-reference/attestation/validate) — where claims appear in the minted token

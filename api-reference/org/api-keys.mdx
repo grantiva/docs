@@ -1,0 +1,207 @@
+---
+title: "API Keys"
+description: "Create, rotate, and revoke server-side API keys for your organization"
+---
+
+<Info>Server API keys are available on **Pro** and above. The number of active keys is limited by tier: Pro allows 1, Business allows 5, Enterprise allows 20. The Free tier cannot create API keys.</Info>
+
+## Authentication
+
+All API key management endpoints require a dashboard session (cookie-based). Any organization member can list keys; creating, rotating, and revoking keys requires **Admin** role or above.
+
+## Key prefixes
+
+Grantiva issues three kinds of keys, distinguishable by prefix:
+
+| Prefix | Type | Issued by |
+|--------|------|-----------|
+| `grantiva_prod_sk_` | Server API key with scopes | This endpoint (`POST /api/v1/org/api-keys`) |
+| `aat_` | Organization/tenant key | Provisioned with the organization |
+| `gpat_` | Personal access token tied to a user | CLI authentication flow |
+
+Use keys in server-to-server requests via the `Authorization` header:
+
+```
+Authorization: Bearer grantiva_prod_sk_...
+```
+
+<Warning>The raw key is returned **only once**, at creation or rotation time. Only a SHA-256 hash is stored — a lost key cannot be recovered, only rotated.</Warning>
+
+---
+
+## List API keys
+
+```
+GET /api/v1/org/api-keys
+```
+
+Returns all API keys for the organization (including revoked ones), sorted by creation date, newest first.
+
+**Response**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Analytics pipeline",
+    "keyPrefix": "grantiva_prod_sk_1a2b3c4d5e6f7a8b...",
+    "scopes": ["analytics:read", "devices:read"],
+    "keyType": "org",
+    "isActive": true,
+    "lastUsedAt": "2026-07-20T09:15:00Z",
+    "expiresAt": null,
+    "createdAt": "2026-05-01T12:00:00Z"
+  }
+]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string (UUID) | Key identifier |
+| `name` | string | Human-readable label |
+| `keyPrefix` | string | Truncated key for identification — never the full key |
+| `scopes` | string[] | Granted scopes (see below) |
+| `keyType` | string \| null | `org` or `personal` |
+| `isActive` | boolean | `false` once revoked |
+| `lastUsedAt` | string \| null | Last successful authentication with this key |
+| `expiresAt` | string \| null | Expiration timestamp, if set |
+| `createdAt` | string | Creation timestamp |
+
+---
+
+## Create an API key
+
+```
+POST /api/v1/org/api-keys
+```
+
+Requires **Admin** role.
+
+**Request body**
+
+```json
+{
+  "name": "Analytics pipeline",
+  "scopes": ["analytics:read", "devices:read"],
+  "expiresAt": "2027-01-01T00:00:00Z"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Label shown in the dashboard |
+| `scopes` | string[] | Yes | At least one valid scope. Unknown scope strings are ignored; if none remain, the request fails with `400` |
+| `expiresAt` | string | No | ISO 8601 expiration date. Omit for a non-expiring key |
+
+**Response** — `200 OK`
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Analytics pipeline",
+  "keyPrefix": "grantiva_prod_sk_1a2b3c4d5e6f7a8b...",
+  "rawKey": "grantiva_prod_sk_1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6d",
+  "scopes": ["analytics:read", "devices:read"],
+  "keyType": null,
+  "isActive": true,
+  "expiresAt": "2027-01-01T00:00:00Z",
+  "createdAt": "2026-07-26T12:00:00Z"
+}
+```
+
+`rawKey` is shown only in this response. Store it securely.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | No valid scope provided, invalid `expiresAt` format, scopes not available on your tier, or the active-key limit for your tier is reached |
+| 403 | Caller is not an Admin |
+
+---
+
+## Rotate an API key
+
+```
+POST /api/v1/org/api-keys/:id/rotate
+```
+
+Requires **Admin** role. Generates a new key with the same scopes, expiration, and IP allow-list. The new key is named `"<old name> (Rotated)"`.
+
+**Request body** (optional)
+
+```json
+{
+  "gracePeriodDays": 7
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `gracePeriodDays` | integer | No | If provided and greater than 0, the old key keeps working for this many days (its name gets an `(Expires Soon)` suffix). If omitted or 0, the old key is deactivated immediately |
+
+**Response** — `200 OK`
+
+Same shape as the create response, including the new `rawKey` (shown once).
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 404 | Key not found in this organization, or already revoked |
+
+---
+
+## Revoke an API key
+
+```
+POST /api/v1/org/api-keys/:id/revoke
+DELETE /api/v1/org/api-keys/:id
+```
+
+Both routes are equivalent. Requires **Admin** role. The key is deactivated immediately and cannot be reactivated.
+
+**Response** — `204 No Content`
+
+---
+
+## Scopes
+
+Scopes follow a `resource:action` format. A key with `api:all` passes every scope check.
+
+| Scope | Description |
+|-------|-------------|
+| `analytics:read` | View attestation analytics and reports |
+| `analytics:export` | Export analytics data |
+| `analytics:realtime` | Access real-time analytics streams |
+| `devices:read` | View device profiles and attestation history |
+| `devices:write` | Update device metadata or risk scores |
+| `devices:delete` | Remove device records (GDPR compliance) |
+| `claims:read` | View custom claim definitions |
+| `claims:write` | Create/update custom claim definitions |
+| `claims:delete` | Delete custom claim definitions |
+| `claims:test` | Test custom claims without saving |
+| `apps:read` | View app configurations |
+| `apps:write` | Create/update app configurations |
+| `apps:delete` | Delete apps |
+| `webhooks:read` | View webhook configurations |
+| `webhooks:write` | Create/update webhooks |
+| `webhooks:delete` | Delete webhooks |
+| `webhooks:test` | Send test webhook events |
+| `admin:audit` | Access audit logs (Enterprise) |
+| `admin:compliance` | Generate compliance reports (Enterprise) |
+| `admin:billing` | Access billing information (Enterprise) |
+| `admin:team` | Manage team members (Enterprise) |
+| `attestation:validate` | Validate attestations |
+| `api:all` | Full access to all APIs (Enterprise) |
+
+**Scope availability by tier**
+
+| Tier | Available scopes |
+|------|------------------|
+| Free | None — no API keys |
+| Pro (`basic`) | `analytics:read`, `devices:read` |
+| Business (`professional`) | Everything except `admin:*` and `api:all` |
+| Enterprise | All scopes |
+
+Requesting a scope outside your tier returns `400` with the invalid scopes listed.

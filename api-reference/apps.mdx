@@ -1,0 +1,259 @@
+---
+title: "Apps"
+description: "Register and manage the apps (Bundle ID + Team ID pairs) in your organization"
+---
+
+Each app is a unique **Bundle ID + Team ID** pair. Incoming attestations are matched to an app by these two values — no API key is involved on the client side.
+
+<Info>App limits by tier: Free allows 2 apps, Pro allows 3, Business allows 10, Enterprise is unlimited.</Info>
+
+## Authentication
+
+All app endpoints require an authenticated dashboard session (cookie-based).
+
+---
+
+## The app object
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "appName": "My App",
+  "bundleId": "com.yourapp.example",
+  "teamId": "ABBM6U9RM5",
+  "description": "Production iOS app",
+  "isActive": true,
+  "isPrimary": true,
+  "jwtConfiguration": {
+    "overrideExpirationTime": null,
+    "includeAppMetadata": true,
+    "customAudience": null,
+    "customIssuer": null
+  },
+  "riskThresholds": {
+    "maxAllowedRiskScore": 75,
+    "blockOnJailbreak": true,
+    "minAttestationCount": 0,
+    "maxDeviceAge": null,
+    "requireAppStoreReceipt": true
+  },
+  "analyticsEnabled": true,
+  "webhookEnabled": true,
+  "createdAt": "2026-01-15T12:00:00Z",
+  "updatedAt": "2026-07-01T08:30:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `isActive` | boolean | Inactive apps reject attestations |
+| `isPrimary` | boolean | One app per org is primary; used for quick start and as the default |
+| `jwtConfiguration` | object | Per-app JWT overrides: `overrideExpirationTime` (seconds), `includeAppMetadata`, `customAudience`, `customIssuer` |
+| `riskThresholds` | object | Per-app risk policy: `maxAllowedRiskScore` (0–100), `blockOnJailbreak`, `minAttestationCount`, `maxDeviceAge` (days, nullable), `requireAppStoreReceipt` |
+
+---
+
+## List apps
+
+```
+GET /api/v1/apps
+```
+
+Returns all apps in the organization, primary app first, then alphabetically by name.
+
+**Response** — array of app objects.
+
+---
+
+## Register an app
+
+```
+POST /api/v1/apps
+```
+
+**Request body**
+
+```json
+{
+  "appName": "My App",
+  "bundleId": "com.yourapp.example",
+  "teamId": "ABBM6U9RM5",
+  "description": "Production iOS app",
+  "isPrimary": false
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `appName` | string | Yes | Display name |
+| `bundleId` | string | Yes | App bundle identifier; validated against standard reverse-DNS format |
+| `teamId` | string | Yes | Apple Developer Team ID |
+| `description` | string | No | Free-form description |
+| `isPrimary` | boolean | No | Defaults to `true` for the org's first app, `false` otherwise. Setting it clears the flag on other apps |
+| `jwtConfiguration` | object | No | See the app object above |
+| `riskThresholds` | object | No | See the app object above |
+
+**Response** — the created app object.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Missing name/bundle ID/team ID, or invalid bundle ID format |
+| 403 | App limit for your tier reached |
+| 409 | This Bundle ID + Team ID combination is already registered (globally unique) |
+
+---
+
+## Get an app
+
+```
+GET /api/v1/apps/:appID
+```
+
+**Response** — the app object. `404` if the app doesn't exist in your organization.
+
+---
+
+## Update an app
+
+```
+PUT /api/v1/apps/:appID
+```
+
+All fields optional; only provided fields change. Bundle ID and Team ID cannot be changed — register a new app instead.
+
+**Request body**
+
+```json
+{
+  "appName": "My App (renamed)",
+  "description": "Updated description",
+  "isActive": true,
+  "jwtConfiguration": { "includeAppMetadata": false },
+  "riskThresholds": { "maxAllowedRiskScore": 60, "blockOnJailbreak": true, "minAttestationCount": 0, "requireAppStoreReceipt": true },
+  "analyticsEnabled": true,
+  "webhookEnabled": false
+}
+```
+
+**Response** — the updated app object.
+
+---
+
+## Delete an app
+
+```
+DELETE /api/v1/apps/:appID
+```
+
+Permanently removes the app. If the deleted app was primary, another active app is promoted to primary automatically.
+
+**Response** — `204 No Content`
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 403 | Cannot delete the last remaining app |
+| 404 | App not found |
+
+---
+
+## Activate / deactivate
+
+```
+POST /api/v1/apps/:appID/activate
+POST /api/v1/apps/:appID/deactivate
+```
+
+Toggles whether the app accepts attestations. The primary app cannot be deactivated (`403`).
+
+**Response** — the updated app object.
+
+---
+
+## Set primary
+
+```
+POST /api/v1/apps/:appID/set-primary
+```
+
+Makes this app the organization's primary app and clears the flag on all others. The app must be active (`403` otherwise).
+
+**Response** — the updated app object.
+
+---
+
+## Usage stats (all apps)
+
+```
+GET /api/v1/apps/stats
+```
+
+Returns aggregate usage per app.
+
+**Response**
+
+```json
+[
+  {
+    "appId": "550e8400-e29b-41d4-a716-446655440000",
+    "appName": "My App",
+    "totalAttestations": 128341,
+    "uniqueDevices": 20419,
+    "avgRiskScore": 11.4,
+    "successRate": 0.996,
+    "lastAttestation": "2026-07-26T11:59:31Z"
+  }
+]
+```
+
+---
+
+## Usage detail (single app)
+
+```
+GET /api/v1/apps/:appID/usage
+```
+
+**Query parameters**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `days` | 30 | Look-back window for daily usage |
+
+**Response**
+
+```json
+{
+  "appId": "550e8400-e29b-41d4-a716-446655440000",
+  "appName": "My App",
+  "dailyUsage": [
+    {
+      "date": "2026-07-26T00:00:00Z",
+      "attestations": 4211,
+      "unique_devices": 3980,
+      "avg_risk_score": 10.7
+    }
+  ],
+  "topDevices": [
+    {
+      "keyId": "abc123keyid",
+      "attestationCount": 812,
+      "riskScore": 4,
+      "lastSeen": "2026-07-26T11:12:00Z",
+      "deviceModel": "iPhone16,2"
+    }
+  ],
+  "recentErrors": [
+    {
+      "timestamp": "2026-07-26T09:30:00Z",
+      "errorReason": "Challenge expired",
+      "keyId": "def456keyid"
+    }
+  ]
+}
+```
+
+`dailyUsage` is sorted newest-day first; `topDevices` is the 10 devices with the most attestations; `recentErrors` is the 10 most recent failed attestation events.

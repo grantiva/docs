@@ -1,0 +1,219 @@
+---
+title: "Webhook Events"
+description: "All webhook event types and their payloads"
+---
+
+Reference for every event Grantiva can deliver to your webhook endpoints. For setup, retries, and signature verification, see [Webhooks](/concepts/webhooks).
+
+## Delivery format
+
+Every delivery is an HTTP POST with these headers:
+
+| Header | Description |
+|--------|-------------|
+| `Content-Type` | `application/json` |
+| `X-Grantiva-Signature` | `sha256=<hex HMAC-SHA256>` of the request body, signed with your endpoint secret. Always verify — see [Verifying signatures](/concepts/webhooks#verifying-signatures) |
+| `X-Grantiva-Event` | The event type (e.g. `device.high_risk`) |
+| `X-Grantiva-Delivery` | Unique delivery ID |
+| `User-Agent` | `Grantiva-Webhooks/1.0` |
+
+The body is always the same envelope. All values in `data` are strings:
+
+```json
+{
+  "event": "<event type>",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": { "...": "..." }
+}
+```
+
+Respond with a 2xx status within the timeout. Non-2xx responses and timeouts are retried up to 3 times (after 1, 5, and 30 minutes).
+
+<Note>Webhooks fire on paid tiers only (Pro, Business, Enterprise).</Note>
+
+## Device events
+
+### `device.new`
+
+First attestation from a new device.
+
+```json
+{
+  "event": "device.new",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "key_id": "abc123...",
+    "device_id": "9f2b6c...",
+    "device_model": "iPhone15,2",
+    "os_version": "18.0"
+  }
+}
+```
+
+### `device.attested.first`
+
+Fires exactly once per app, when the first device ever attests for it — your activation moment.
+
+```json
+{
+  "event": "device.attested.first",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "app_id": "6f1d4a...",
+    "bundle_id": "com.yourapp.example",
+    "team_id": "ABBM6U9RM5",
+    "device_risk_score": "5"
+  }
+}
+```
+
+### `device.high_risk`
+
+A device's risk score exceeded your configured threshold (default 50).
+
+```json
+{
+  "event": "device.high_risk",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "key_id": "abc123...",
+    "device_id": "9f2b6c...",
+    "risk_score": "82",
+    "threshold": "50"
+  }
+}
+```
+
+### `device.attestation_failed`
+
+A device failed Apple attestation validation.
+
+```json
+{
+  "event": "device.attestation_failed",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "key_id": "abc123...",
+    "bundle_id": "com.yourapp.example",
+    "reason": "Apple attestation validation failed"
+  }
+}
+```
+
+### `attestation.anomaly`
+
+Unusual attestation patterns detected for a device. `anomalies` is a comma-separated list.
+
+```json
+{
+  "event": "attestation.anomaly",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "key_id": "abc123...",
+    "device_id": "9f2b6c...",
+    "anomalies": "os_version_downgrade, rapid_reattestation"
+  }
+}
+```
+
+## Flag events
+
+### `flag.created`
+
+```json
+{
+  "event": "flag.created",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "flag_key": "dark_mode",
+    "tenant_id": "3c9e1b..."
+  }
+}
+```
+
+### `flag.updated`
+
+Fires when a flag is toggled or its configuration changes.
+
+```json
+{
+  "event": "flag.updated",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "flag_key": "dark_mode",
+    "is_active": "true",
+    "tenant_id": "3c9e1b..."
+  }
+}
+```
+
+### `flag.deleted`
+
+```json
+{
+  "event": "flag.deleted",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "flag_key": "dark_mode",
+    "tenant_id": "3c9e1b..."
+  }
+}
+```
+
+## Subscription events
+
+All three subscription events share the same `data` shape — see [Subscription Claims](/concepts/subscription-claims) and the [handling notes](/concepts/webhooks#subscription-events) (dedupe on `event_id`, treat as a cache-bust nudge).
+
+- `subscription.changed` — fires whenever an entitlement materially changes (tier, status, interval, expiry, auto-renew, or product). Identical redeliveries from Apple/Stripe do not re-fire it.
+- `subscription.expired` — additionally fires when status becomes `expired` or `revoked`.
+- `subscription.refunded` — additionally fires on refunds.
+
+```json
+{
+  "event": "subscription.changed",
+  "timestamp": "2026-06-22T19:00:00Z",
+  "data": {
+    "subject_id": "<sharing-unit UUID>",
+    "tier": "plus",
+    "status": "active",
+    "interval": "annual",
+    "source": "apple",
+    "product_id": "com.example.plus.annual",
+    "expires_at": "2026-12-01T00:00:00Z",
+    "source_subscription_id": "2000000xxxxxxxxx",
+    "environment": "production",
+    "auto_renew": "true",
+    "event_id": "<uuid>"
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `subject_id` | Sharing-unit UUID the entitlement belongs to |
+| `tier` | Your app's subscription tier name |
+| `status` | `active`, `in_grace`, `expired`, `revoked`, or `refunded` |
+| `interval` | Billing interval (e.g. `monthly`, `annual`) |
+| `source` | `apple` or `stripe` |
+| `product_id` | Store product identifier |
+| `expires_at` | ISO 8601 expiry — empty string when none. Note: this is epoch seconds in the JWT claim, ISO 8601 here |
+| `source_subscription_id` | Apple original transaction ID or Stripe subscription ID |
+| `environment` | `production` or `sandbox` |
+| `auto_renew` | `"true"` or `"false"` |
+| `event_id` | Unique event ID — dedupe on this |
+
+## Event summary
+
+| Event | Trigger |
+|-------|---------|
+| `device.new` | First attestation from a new device |
+| `device.attested.first` | First device ever attests for an app (once per app) |
+| `device.high_risk` | Risk score exceeds threshold |
+| `device.attestation_failed` | Attestation validation failed |
+| `attestation.anomaly` | Unusual attestation pattern detected |
+| `flag.created` | Feature flag created |
+| `flag.updated` | Feature flag toggled or reconfigured |
+| `flag.deleted` | Feature flag deleted |
+| `subscription.changed` | Entitlement materially changed |
+| `subscription.expired` | Entitlement expired or revoked |
+| `subscription.refunded` | Entitlement refunded |

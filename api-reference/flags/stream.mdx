@@ -1,0 +1,72 @@
+---
+title: "Stream Flags (SSE)"
+description: "Real-time feature flag updates over Server-Sent Events"
+---
+
+Subscribe to a Server-Sent Events (SSE) stream that pushes your current flag configuration immediately on connect, then re-pushes the full configuration whenever any flag for your tenant is created, updated, toggled, or deleted (including targeting rule changes).
+
+<Note>The iOS SDK (2.0.6+) manages this connection for you, including automatic reconnection. You typically only call this endpoint directly from server-side consumers.</Note>
+
+## Request
+
+```
+GET /api/v1/flags/stream
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side/simulator callers. Identity headers alone return 401. See [Authentication](/api-reference/authentication) |
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `environment` | `string` | `production` | `production`, `staging`, or `development` |
+
+## Response
+
+```
+Content-Type: text/event-stream
+Cache-Control: no-cache
+Connection: keep-alive
+```
+
+The stream stays open and emits a single event type, `flags`. Each event carries the **full** flag configuration for the requested environment (the same shape as [`GET /api/v1/flags`](/api-reference/flags/get-flags)) — replace your cached config wholesale on every event, no diffing required:
+
+```
+event: flags
+data: {"flags":{"dark_mode":true,"upload_limit":50,"theme":"modern"}}
+
+```
+
+| Event | Data payload | When |
+|-------|--------------|------|
+| `flags` | `{"flags": { ... }}` — full typed flag map | Immediately on connect, and again after every flag mutation for your tenant |
+
+Flag values are typed (boolean, integer, double, string, or JSON), resolved for the requested environment.
+
+## Keepalives
+
+Every 20 seconds the server writes an SSE comment line:
+
+```
+: keepalive
+
+```
+
+Comment lines (prefixed with `:`) are ignored by spec-compliant SSE parsers. They exist purely to defeat idle timeouts at every hop between your client and the server — including the iOS SDK's 75-second URLSession idle timeout (SDK 2.0.6) and CDN proxy idle cutoffs. If you write your own SSE client, make sure it tolerates comment lines and does not treat them as events.
+
+## Reconnection
+
+Connections can still drop (network changes, deploys, proxy resets). Reconnect with exponential backoff; on reconnect the first `flags` event immediately restores the current configuration, so no state is lost.
+
+<Note>SDK 2.0.6+ handles all of this automatically — keepalive tolerance, the 75s idle timeout, and reconnection with backoff. If flag streaming silently stalls on older SDK versions, upgrade to 2.0.6 or later.</Note>
+
+## See also
+
+- [Get Flags](/api-reference/flags/get-flags) — one-shot polling equivalent
+- [Feature Flags in the SDK](/sdk/feature-flags)

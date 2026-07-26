@@ -1,0 +1,288 @@
+---
+title: "Organization Settings"
+description: "Org settings, notification preferences, billing, audit log, and deletion"
+---
+
+## Authentication
+
+All endpoints require a dashboard session (cookie-based) with organization context. Role requirements vary per endpoint and are noted below. Roles from lowest to highest: **Viewer**, **Member**, **Admin**, **Owner**.
+
+---
+
+## Get organization settings
+
+```
+GET /api/v1/org/settings
+```
+
+Available to any organization member.
+
+**Response**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "name": "Acme Corp",
+  "slug": "acme-corp",
+  "serviceTier": "Business",
+  "serviceTierRawValue": "professional",
+  "billingEmail": "billing@acme.com",
+  "createdAt": "2026-01-15T12:00:00Z",
+  "updatedAt": "2026-07-01T08:30:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `serviceTier` | string | Display name: `Free`, `Pro`, `Business`, or `Enterprise` |
+| `serviceTierRawValue` | string | Raw tier value: `free`, `basic`, `professional`, `enterprise` (legacy: `growth`, `enterprise_plus`) |
+| `billingEmail` | string \| null | Billing contact, if set |
+
+---
+
+## Update organization settings
+
+```
+PUT /api/v1/org/settings
+```
+
+Requires **Admin** role. Currently only the organization name can be changed; the URL slug is regenerated from the new name.
+
+**Request body**
+
+```json
+{
+  "name": "Acme Corporation"
+}
+```
+
+**Response** — `200 OK` — the updated settings object.
+
+---
+
+## Notification preferences
+
+### Get preferences
+
+```
+GET /api/v1/org/notification-preferences
+```
+
+Available to any organization member.
+
+**Response**
+
+```json
+{
+  "newFeatureRequest": true,
+  "featureVoteThreshold": true,
+  "featureVoteThresholdCount": 10,
+  "featureStatusChange": true,
+  "newSupportTicket": true,
+  "ticketAdminReply": true,
+  "ticketResolved": true,
+  "ticketUserReply": true,
+  "flagToggle": true,
+  "teamInvite": true,
+  "usageAlert": true
+}
+```
+
+### Update preferences
+
+```
+PATCH /api/v1/org/notification-preferences
+```
+
+Requires **Admin** role. Partial update — only fields present in the body are modified.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `newFeatureRequest` | boolean | Notify when a feature request is filed |
+| `featureVoteThreshold` | boolean | Notify when a feature request crosses the vote threshold |
+| `featureVoteThresholdCount` | integer | Vote threshold, 1–10000 |
+| `featureStatusChange` | boolean | Notify on feature request status changes |
+| `newSupportTicket` | boolean | Notify on new support tickets |
+| `ticketAdminReply` | boolean | Notify when support replies to a ticket |
+| `ticketResolved` | boolean | Notify when a ticket is resolved |
+| `ticketUserReply` | boolean | Notify when a user replies to a ticket |
+| `flagToggle` | boolean | Notify when a feature flag is toggled |
+| `teamInvite` | boolean | Notify the inviter when an invite is accepted |
+| `usageAlert` | boolean | Notify on usage/quota alerts |
+
+**Response** — `200 OK` — the full updated preferences object.
+
+---
+
+## Billing
+
+### Get billing summary
+
+```
+GET /api/v1/org/billing
+```
+
+Requires **Admin** role.
+
+**Response**
+
+```json
+{
+  "plan": "Business",
+  "planRawValue": "professional",
+  "madUsed": 48211,
+  "madLimit": 250000,
+  "currentPeriodEnd": "2026-08-01T00:00:00Z",
+  "stripeCustomerId": "cus_ABC123",
+  "stripeSubscriptionId": "sub_XYZ789"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `madUsed` | integer | Monthly Active Devices — unique devices that attested since the start of the current calendar month |
+| `madLimit` | integer \| null | Tier MAD limit; `null` means unlimited (Enterprise) |
+| `currentPeriodEnd` | string \| null | End of the current billing period |
+| `stripeCustomerId` | string \| null | Present once the org has upgraded to a paid plan |
+| `stripeSubscriptionId` | string \| null | Active Stripe subscription, if any |
+
+### Create a billing portal session
+
+```
+POST /api/v1/org/billing/portal-session
+```
+
+Requires **Admin** role. Returns a short-lived, pre-authenticated Stripe Customer Portal URL where the user can view invoices, download receipts, and update the payment method. Open it directly in the browser.
+
+**Response** — `200 OK`
+
+```json
+{
+  "url": "https://billing.stripe.com/p/session/..."
+}
+```
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 402 | No billing account — the org has never upgraded to a paid plan |
+| 503 | Billing portal not configured; contact billing@grantiva.io |
+
+---
+
+## Audit log
+
+```
+GET /api/v1/org/audit-log
+```
+
+Requires **Admin** role. Paginated audit trail scoped to the current organization, newest first.
+
+**Query parameters**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `page` | 1 | Page number |
+| `per` | 50 | Items per page (max 100) |
+
+**Response**
+
+```json
+{
+  "items": [
+    {
+      "id": "7f3e2a10-1b2c-4d5e-8f90-112233445566",
+      "actorEmail": "admin@acme.com",
+      "action": "apikey.created",
+      "resourceType": "api_key",
+      "resourceId": "550e8400-e29b-41d4-a716-446655440000",
+      "metadata": { "name": "Analytics pipeline" },
+      "ipAddress": "203.0.113.7",
+      "createdAt": "2026-07-26T12:00:00Z"
+    }
+  ],
+  "metadata": {
+    "page": 1,
+    "per": 50,
+    "total": 320
+  }
+}
+```
+
+Actions follow a `resource.verb` convention, e.g. `user.login`, `invite.created`, `apikey.rotated`, `webhook.updated`, `org.settings_updated`, `risk_alert_rule.created`.
+
+---
+
+## Quick start snippet
+
+```
+GET /api/v1/org/quickstart-snippet
+```
+
+Available to any organization member. Returns the org's primary app credentials and a pre-filled Swift SDK initialization snippet, used by the dashboard's quick start page.
+
+**Response**
+
+```json
+{
+  "appId": "550e8400-e29b-41d4-a716-446655440000",
+  "appName": "My App",
+  "teamId": "ABBM6U9RM5",
+  "bundleId": "com.yourapp.example",
+  "swiftSnippet": "import Grantiva\n..."
+}
+```
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 404 | No apps registered yet |
+
+---
+
+## Delete the organization
+
+```
+DELETE /api/v1/org
+```
+
+Requires **Owner** role.
+
+<Warning>This permanently and immediately deletes the organization and **all** associated data in a single transaction — apps, devices, attestations, API keys, webhooks and deliveries, feature flags, custom claims, audit logs, support tickets, feature requests, invites, and memberships. Member user accounts are deactivated. This cannot be undone.</Warning>
+
+The caller's session is destroyed as part of the request.
+
+**Response** — `204 No Content`
+
+---
+
+## Delete your account
+
+```
+DELETE /api/v1/account
+```
+
+Requires **Owner** role. Soft-deletes the current user's account:
+
+- The account is marked pending deletion and **hard-deleted after 30 days**. Contact support@grantiva.io before then to cancel.
+- Any active Stripe subscription is cancelled.
+- A confirmation email is sent with the scheduled deletion date.
+- The current session is destroyed.
+
+**Response** — `204 No Content`
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 409 | The organization has other members — remove them or transfer ownership first |
+
+---
+
+## See also
+
+- [API Keys](/api-reference/org/api-keys)
+- [Webhook Endpoints](/api-reference/webhooks/endpoints)
+- [Risk Alert Rules](/api-reference/org/risk-alerts)

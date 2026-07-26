@@ -1,0 +1,102 @@
+---
+title: "API Conventions"
+description: "Rate limits, request IDs, response headers, and error envelopes shared by all endpoints"
+---
+
+Base URL: `https://api.grantiva.io`
+
+## Rate limiting
+
+Two layers of rate limiting apply:
+
+- **Per-IP** — DoS protection on the challenge and validate endpoints. Applied before the tenant limit.
+- **Per-tenant** — a Redis sliding 60-second window, scoped per organization and endpoint bucket, with limits set by your plan tier.
+
+### Headers
+
+Rate-limited endpoints attach these headers to every response:
+
+| Header | Description |
+|--------|-------------|
+| `X-RateLimit-Limit` | Requests allowed per 60-second window |
+| `X-RateLimit-Remaining` | Requests remaining in the current window |
+| `X-RateLimit-Reset` | Unix timestamp when the window resets |
+| `Retry-After` | Seconds to wait — only on 429 responses |
+
+A 429 body looks like:
+
+```json
+{
+  "error": "Rate limit exceeded. Retry after 12 seconds.",
+  "code": "rate_limited",
+  "requestId": "6f1d..."
+}
+```
+
+### Per-tier limits
+
+Requests per minute, per organization, by endpoint bucket:
+
+| Bucket | Endpoints | Free | Pro | Business | Enterprise |
+|--------|-----------|------|-----|----------|------------|
+| `attest` | `POST /attestation/validate`, `POST /attestation/refresh` | 30 | 500 | 2,000 | 10,000 |
+| `challenge` | `GET /attestation/challenge` | 60 | 1,000 | 4,000 | 20,000 |
+| `flags` | `GET /flags`, flag evaluation | 120 | 2,000 | 8,000 | 40,000 |
+| `apikey` | Server-to-server API key endpoints (VRT, analytics) | 30 | 300 | 1,000 | 5,000 |
+
+Flag limits are 4x attestation limits to accommodate SDK polling. API key limits are lower than SDK limits because calls originate from a server, not individual devices.
+
+<Note>Rate limiting fails open: if the limiter backend is unavailable, requests are allowed through. Treat limits as a ceiling, not a guarantee of throttling behavior.</Note>
+
+## 402 vs 429
+
+These are different signals — don't handle them the same way:
+
+| Status | Code | Meaning | What to do |
+|--------|------|---------|-----------|
+| 402 | `quota_exceeded` | Monthly active device (MAD) plan limit reached and the grace period has expired. Existing devices keep working — only new device onboarding is paused | Upgrade your plan. Retrying won't help |
+| 429 | `rate_limited` | Too many requests this minute | Back off and retry after `Retry-After` seconds |
+
+The 402 body includes the details you need:
+
+```json
+{
+  "error": "quota_exceeded",
+  "message": "Monthly active device limit reached. Upgrade your plan at grantiva.io/pricing",
+  "upgradeUrl": "https://grantiva.io/pricing",
+  "limit": 1000,
+  "current": 1000,
+  "requestId": "6f1d..."
+}
+```
+
+## Request IDs
+
+Every response carries an `X-Request-ID` header. If you send `X-Request-ID` on the request, your value is echoed back; otherwise the server generates a UUID. The same ID appears as `requestId` in error bodies and in server logs — include it in support requests.
+
+## Deployment version
+
+Every response carries an `X-Grantiva-Commit` header with the deployed commit SHA. Useful for verifying which version you're talking to.
+
+## Error envelope
+
+API errors return a JSON envelope with a stable machine-readable `code`, a developer-readable message in `error`, and (where useful) a `hint`:
+
+```json
+{
+  "error": "Challenge expired — challenges are valid for 5 minutes. Request a new one from GET /api/v1/attestation/challenge.",
+  "code": "challenge_expired",
+  "hint": "See https://docs.grantiva.io/sdk/attestation#challenges for the challenge flow.",
+  "requestId": "6f1d..."
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `error` | `string` | Human-readable description of what went wrong |
+| `code` | `string` | Stable code for programmatic handling (e.g. `challenge_expired`, `reattest_required`, `rate_limited`) |
+| `hint` | `string` | Optional pointer to docs or a suggested fix |
+| `requestId` | `string` | Correlation ID — matches the `X-Request-ID` response header |
+| `fields` | `array` | Only on 422 validation errors: `[{ "field": "...", "message": "..." }]` |
+
+Attestation endpoints use domain-specific codes (see [validate errors](/api-reference/attestation/validate#errors)). Generic failures map to codes derived from the HTTP status: `bad_request`, `unauthorized`, `forbidden`, `not_found`, `conflict`, `unprocessable_entity`, `rate_limited`, `internal_error`.

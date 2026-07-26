@@ -1,0 +1,207 @@
+---
+title: "Flag Targeting Rules"
+description: "Create and manage targeting rules that resolve flag values per device"
+---
+
+Targeting rules let a flag resolve to different values based on device attributes. Rules are evaluated in priority order (lowest first); the first rule whose conditions **all** match — and whose rollout percentage admits the device — wins. If no rule matches, the flag's default value for the environment is returned.
+
+<Info>Targeting rules are available on **Pro**, **Business**, and **Enterprise** plans. See [Tier limits](#tier-limits).</Info>
+
+## Authentication
+
+Rule endpoints live under the tenant flags API and use the same authentication as [Get Flags](/api-reference/flags/get-flags):
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side callers. See [Authentication](/api-reference/authentication) |
+
+The dashboard UI manages rules through equivalent session-authenticated endpoints; the routes below are the API surface for server-side automation.
+
+---
+
+## List rules
+
+```
+GET /api/v1/flags/:flagId/rules
+```
+
+Returns all rules for the flag, sorted by priority (ascending).
+
+**Response**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "flagId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "priority": 0,
+    "name": "Beta testers on iOS 18+",
+    "conditions": [
+      { "attribute": "os_version", "operator": "gte", "value": "18.0" },
+      { "attribute": "attestation_status", "operator": "eq", "value": "attested" }
+    ],
+    "value": "true",
+    "rolloutPercentage": 50,
+    "isActive": true,
+    "createdAt": "2026-03-01T12:00:00Z",
+    "updatedAt": "2026-03-10T08:30:00Z"
+  }
+]
+```
+
+---
+
+## Create a rule
+
+```
+POST /api/v1/flags/:flagId/rules
+```
+
+New rules are appended to the end of the priority order.
+
+**Request body**
+
+```json
+{
+  "name": "Beta testers on iOS 18+",
+  "conditions": [
+    { "attribute": "os_version", "operator": "gte", "value": "18.0" }
+  ],
+  "value": "true",
+  "rolloutPercentage": 50,
+  "isActive": true
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `name` | string | Yes | Human-readable rule name (non-empty) |
+| `conditions` | object[] | Yes | At least one condition. All conditions must match (AND) |
+| `value` | string | Yes | The flag value returned when this rule matches |
+| `rolloutPercentage` | integer | No | 0–100, default `100`. See [Rollout percentage](#rollout-percentage) |
+| `isActive` | boolean | No | Default `true` |
+
+**Response** — the created `FlagRuleResponse` (same shape as list).
+
+---
+
+## Update a rule
+
+```
+PUT /api/v1/flags/:flagId/rules/:ruleId
+```
+
+All fields are optional; only provided fields are changed. `priority` can also be set directly here, though [reorder](#reorder-rules) is the safer way to change ordering.
+
+```json
+{
+  "name": "Renamed rule",
+  "rolloutPercentage": 100,
+  "isActive": false
+}
+```
+
+---
+
+## Delete a rule
+
+```
+DELETE /api/v1/flags/:flagId/rules/:ruleId
+```
+
+**Response** — `204 No Content`
+
+---
+
+## Reorder rules
+
+```
+PATCH /api/v1/flags/:flagId/rules/reorder
+```
+
+**Request body**
+
+```json
+{
+  "ruleIds": [
+    "550e8400-e29b-41d4-a716-446655440000",
+    "6f9619ff-8b86-d011-b42d-00cf4fc964ff"
+  ]
+}
+```
+
+`ruleIds` must contain **exactly** the IDs of all rules for the flag — array index becomes the new priority. Returns the updated rule list sorted by priority. Priorities are updated atomically in a transaction.
+
+---
+
+## Conditions
+
+Each condition is:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `attribute` | string | A [targeting attribute](#targeting-attributes) |
+| `operator` | string | One of the [operators](#operators) |
+| `value` | string \| string[] | Comparison value. Arrays are used with `in` / `not_in` |
+
+### Targeting attributes
+
+Attributes match against device context headers sent by the SDK on flag requests:
+
+| Attribute | Source header | Description |
+|-----------|---------------|-------------|
+| `device_model` | `X-Device-Model` | Device model identifier (e.g. `iPhone15,2`) |
+| `os_version` | `X-OS-Version` | OS version, compared semantically |
+| `app_version` | `X-App-Version` | App version, compared semantically |
+| `device_id` | `X-Device-ID` | Stable device identifier |
+| `risk_score` | `X-Risk-Score` | Device risk score (0–100) |
+| `locale` | `X-Locale` | Device locale |
+| `country` | `X-Country` | Country code |
+| `user_id` | `X-User-ID` | Application-level user identifier set via the SDK |
+| `attestation_status` | `X-Attestation-Status` | `attested`, `unattested`, or `expired` |
+| `custom.<key>` | `X-Custom-<key>` | Custom attributes set via the SDK |
+
+If the device does not provide a value for a condition's attribute, that condition fails (and the rule does not match).
+
+### Operators
+
+| Operator | Meaning |
+|----------|---------|
+| `eq` / `neq` | Exact string equality / inequality |
+| `gt`, `gte`, `lt`, `lte` | Numeric or semantic-version comparison (`"18.1.2" > "18.1"`) |
+| `in` / `not_in` | Value is / is not in the given array (a string value is treated as a single-element array) |
+| `contains` | Case-insensitive substring match |
+| `starts_with` | Case-insensitive prefix match |
+
+### Rollout percentage
+
+When `rolloutPercentage` is below 100, matching devices are admitted deterministically: a stable hash of `deviceId + flagKey` buckets each device into 0–99, and buckets below the percentage pass. The same device always lands in the same bucket for a given flag, so raising the percentage only ever adds devices.
+
+---
+
+## Tier limits
+
+| Tier | Max rules per flag |
+|------|--------------------|
+| Free | 0 (rules unavailable) |
+| Pro | 5 |
+| Business | 20 |
+| Enterprise | Unlimited |
+
+Creating a rule beyond your tier's limit returns `403 Forbidden`.
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Empty name, empty conditions, `rolloutPercentage` outside 0–100, or `ruleIds` not matching the flag's rule set |
+| 403 | Targeting rule limit reached for your tier |
+| 404 | Flag or rule not found (or not owned by your tenant) |
+
+## See also
+
+- [Get Flags](/api-reference/flags/get-flags)
+- [Stream Flags (SSE)](/api-reference/flags/stream) — rule changes trigger a stream push
+- [Flag Overrides](/api-reference/flags/overrides) — force a value for a single device

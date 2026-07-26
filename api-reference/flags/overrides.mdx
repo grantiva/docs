@@ -1,0 +1,102 @@
+---
+title: "Flag Overrides"
+description: "Force a flag value for a specific device, bypassing rules and rollouts"
+---
+
+Overrides pin a flag to a fixed value for a single device — useful for QA testing a variant on one device without touching targeting rules or affecting other users. An override wins over rule evaluation and rollout bucketing for the targeted device. Overrides can optionally expire.
+
+## Authentication
+
+Override endpoints are part of the dashboard API and require a dashboard session (cookie-based). Listing requires any organization role (viewer+); creating and deleting require **Member** role or above.
+
+---
+
+## List overrides
+
+```
+GET /api/v1/dashboard/flags/:flagId/overrides
+```
+
+Returns all overrides for the flag, newest first.
+
+**Response**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "flagId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+    "deviceKeyId": "9f2b6c1d8e...",
+    "forcedValue": "true",
+    "expiresAt": "2026-04-01T00:00:00Z",
+    "createdAt": "2026-03-01T12:00:00Z",
+    "createdBy": "qa@example.com"
+  }
+]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string | Override ID |
+| `flagId` | string | The flag this override applies to |
+| `deviceKeyId` | string | Device identifier the value is forced for (the value the device sends in `X-Device-ID`) |
+| `forcedValue` | string | Value returned instead of the normal evaluated value |
+| `expiresAt` | string \| null | Optional expiry — overrides past this date are ignored during evaluation |
+| `createdAt` | string | Creation timestamp |
+| `createdBy` | string \| null | Email of the dashboard user who created the override |
+
+---
+
+## Create an override
+
+```
+POST /api/v1/dashboard/flags/:flagId/overrides
+```
+
+Requires **Member** role or above.
+
+**Request body**
+
+```json
+{
+  "deviceKeyId": "9f2b6c1d8e...",
+  "forcedValue": "true",
+  "expiresAt": "2026-04-01T00:00:00Z"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `deviceKeyId` | string | Yes | Device identifier (non-empty). Match the device's `X-Device-ID` value |
+| `forcedValue` | string | Yes | Must be valid for the flag's value type (e.g. `"true"` for a boolean flag) |
+| `expiresAt` | string | No | ISO 8601 timestamp; must be in the future |
+
+**Response** — the created override (same shape as list).
+
+---
+
+## Delete an override
+
+```
+DELETE /api/v1/dashboard/flags/:flagId/overrides/:overrideId
+```
+
+Requires **Member** role or above.
+
+**Response** — `204 No Content`
+
+---
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Empty `deviceKeyId` or `forcedValue`, `forcedValue` invalid for the flag's value type, or `expiresAt` in the past |
+| 401 | No dashboard session |
+| 403 | Insufficient role for write operations |
+| 404 | Flag or override not found (or not owned by your organization) |
+
+## See also
+
+- [Flag Targeting Rules](/api-reference/flags/rules) — rule-based targeting for cohorts of devices
+- [Get Flags](/api-reference/flags/get-flags)

@@ -1,0 +1,105 @@
+---
+title: "Usage"
+description: "Monthly Active Device (MAD) usage for the current organization"
+---
+
+Grantiva bills by Monthly Active Devices (MAD) — unique devices that attest at least once per billing period. These endpoints report MAD consumption against your tier's limit.
+
+## Authentication
+
+Both endpoints require a dashboard session (cookie-based). They are used by the dashboard's MAD meter and upgrade banner.
+
+Responses are cached in Redis for 5 minutes per organization, so values may lag real-time attestation activity slightly.
+
+## Billing period
+
+- **Paid plans (Stripe):** the period follows your Stripe billing cycle; the period start is one month before the current period end.
+- **Free plan:** the period is the current UTC calendar month.
+
+---
+
+## Get usage (canonical)
+
+```
+GET /api/v1/tenants/me/usage
+```
+
+The canonical shape, used by the dashboard MAD meter.
+
+**Response**
+
+```json
+{
+  "currentMAD": 18342,
+  "tierLimit": 25000,
+  "tierName": "Pro",
+  "billingPeriodStart": "2026-03-01T00:00:00Z",
+  "billingPeriodEnd": "2026-04-01T00:00:00Z",
+  "usagePercent": 73.4,
+  "daysUntilReset": 6,
+  "resetDate": "2026-04-01"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `currentMAD` | integer | Unique devices that attested at least once this billing period |
+| `tierLimit` | integer \| null | MAD cap for the current tier. `null` for Enterprise (unlimited) |
+| `tierName` | string | Marketing display name of the current tier (`"Free"`, `"Pro"`, `"Business"`, `"Enterprise"`) |
+| `billingPeriodStart` | string | Start of the current billing period (UTC) |
+| `billingPeriodEnd` | string | End of the current billing period (UTC) |
+| `usagePercent` | number \| null | Percentage of the MAD limit consumed, rounded to one decimal. `null` for Enterprise |
+| `daysUntilReset` | integer \| null | Calendar days remaining until the billing period resets. `null` if indeterminate |
+| `resetDate` | string \| null | ISO 8601 date (`YYYY-MM-DD`, UTC) of the next reset. `null` if indeterminate |
+
+---
+
+## Get usage (legacy)
+
+```
+GET /api/v1/tenant/usage
+```
+
+The legacy shape, used by the dashboard upgrade banner. Includes next-tier upsell fields.
+
+**Response**
+
+```json
+{
+  "attestationsUsed": 18342,
+  "attestationsLimit": 25000,
+  "usagePercent": 73.4,
+  "tier": "pro",
+  "nextTier": "business",
+  "nextTierLimit": 250000,
+  "nextTierPrice": "$149",
+  "cycleEndsAt": "2026-04-01T00:00:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `attestationsUsed` | integer | Unique devices that attested this billing cycle (despite the name, this is MAD, not raw attestation count) |
+| `attestationsLimit` | integer \| null | MAD cap for the current tier. `null` for Enterprise (unlimited) |
+| `usagePercent` | number \| null | Percentage of limit consumed, rounded to one decimal. `null` for Enterprise |
+| `tier` | string | User-facing tier identifier: `"free"`, `"pro"`, `"business"`, or `"enterprise"` |
+| `nextTier` | string \| null | Identifier of the next upgrade tier. `null` on Enterprise |
+| `nextTierLimit` | integer \| null | MAD limit of the next tier. `null` when the next tier is Enterprise (unlimited) or already on Enterprise |
+| `nextTierPrice` | string \| null | Display price of the next tier (e.g. `"$149"`). `null` on Enterprise |
+| `cycleEndsAt` | string | End of the current billing cycle (UTC) |
+
+<Note>Prefer `GET /api/v1/tenants/me/usage` for new integrations — the legacy endpoint's field names predate MAD-based pricing.</Note>
+
+## Tier limits
+
+| Tier | MAD limit |
+|------|-----------|
+| Free | 1,000 |
+| Pro | 25,000 |
+| Business | 250,000 |
+| Enterprise | Unlimited |
+
+## See also
+
+- [Billing](/dashboard/billing)
+- [Validate Attestation](/api-reference/attestation/validate) — the `quota_exceeded` error when the MAD limit and grace period are exhausted

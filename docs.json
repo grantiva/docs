@@ -84,6 +84,7 @@
             "pages": [
               "api-reference/introduction",
               "api-reference/authentication",
+              "api-reference/conventions",
               "backend-verification"
             ]
           },
@@ -91,7 +92,18 @@
             "group": "Attestation",
             "pages": [
               "api-reference/attestation/challenge",
-              "api-reference/attestation/validate"
+              "api-reference/attestation/validate",
+              "api-reference/attestation/refresh",
+              "api-reference/attestation/jwks",
+              "api-reference/heartbeat"
+            ]
+          },
+          {
+            "group": "Platform",
+            "pages": [
+              "api-reference/health",
+              "api-reference/usage",
+              "api-reference/apps"
             ]
           },
           {
@@ -106,7 +118,16 @@
           {
             "group": "Feature Flags",
             "pages": [
-              "api-reference/flags/get-flags"
+              "api-reference/flags/get-flags",
+              "api-reference/flags/stream",
+              "api-reference/flags/rules",
+              "api-reference/flags/overrides"
+            ]
+          },
+          {
+            "group": "Custom Claims",
+            "pages": [
+              "api-reference/claims"
             ]
           },
           {
@@ -121,7 +142,17 @@
           {
             "group": "Webhooks",
             "pages": [
-              "api-reference/webhooks/endpoints"
+              "api-reference/webhooks/endpoints",
+              "api-reference/webhooks/events",
+              "api-reference/org/webhook-endpoints"
+            ]
+          },
+          {
+            "group": "Organization",
+            "pages": [
+              "api-reference/org/api-keys",
+              "api-reference/org/settings",
+              "api-reference/org/risk-alerts"
             ]
           },
           {
@@ -149,7 +180,8 @@
           {
             "group": "Auth",
             "pages": [
-              "api-reference/auth/cli-sessions"
+              "api-reference/auth/cli-sessions",
+              "api-reference/auth/account"
             ]
           }
         ]
