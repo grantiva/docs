@@ -1,0 +1,83 @@
+---
+title: "Entitlement Configuration"
+description: "Configure Apple IAP and Stripe subscription ingestion for your organization"
+---
+
+<Note>Requires the **Enterprise** plan and an **admin** dashboard session. Non-Enterprise organizations receive `403 Forbidden`.</Note>
+
+## Get configuration
+
+```
+GET /api/v1/org/entitlement-config
+```
+
+### Response
+
+```json
+{
+  "enabled": true,
+  "apple": {
+    "bundleId": "com.example.app",
+    "products": {
+      "com.example.plus.annual": { "tier": "plus", "interval": "annual" }
+    }
+  },
+  "stripe": {
+    "signingSecretSet": true,
+    "prices": {
+      "price_1AbCdE": { "tier": "plus", "interval": "monthly" }
+    }
+  },
+  "stripeWebhookPath": "/webhooks/stripe/entitlements/<orgID>"
+}
+```
+
+The Stripe signing secret is **never echoed** — `signingSecretSet` reports whether one is stored. `stripeWebhookPath` is the per-organization path to configure in your Stripe dashboard.
+
+## Update configuration
+
+```
+PUT /api/v1/org/entitlement-config
+```
+
+### Body
+
+```json
+{
+  "enabled": true,
+  "apple": {
+    "bundleId": "com.example.app",
+    "products": {
+      "com.example.plus.monthly": { "tier": "plus", "interval": "monthly" },
+      "com.example.plus.annual":  { "tier": "plus", "interval": "annual" }
+    }
+  },
+  "stripe": {
+    "signingSecret": "whsec_...",
+    "prices": {
+      "price_1AbCdE": { "tier": "plus", "interval": "monthly" }
+    }
+  }
+}
+```
+
+| Field | Type | Notes |
+|-------|------|-------|
+| `enabled` | `boolean` | Master switch for ingestion |
+| `apple.bundleId` | `string` | Bundle ID Apple notifications are matched against |
+| `apple.products` | `object` | Map of Apple product id → `{ tier, interval }` |
+| `stripe.signingSecret` | `string` | Webhook signing secret from your Stripe endpoint. **Omit to keep the existing secret.** Stored encrypted (AES-256-GCM) |
+| `stripe.prices` | `object` | Map of Stripe price id → `{ tier, interval }` |
+| `clearApple` | `boolean` | Remove the Apple configuration |
+| `clearStripe` | `boolean` | Remove the Stripe configuration (including the stored secret) |
+
+`tier` is any string you choose — it flows verbatim into the JWT claim. `interval` must be `monthly` or `annual` (anything else returns `400`).
+
+### Errors
+
+| Status | When |
+|--------|------|
+| 400 | Invalid `interval`, malformed product/price maps |
+| 403 | Organization is not on the Enterprise plan, or the session lacks the admin role |
+
+Updates are recorded in the organization [audit log](/dashboard/overview) as `org.entitlement_config_updated`.

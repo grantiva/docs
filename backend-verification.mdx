@@ -325,6 +325,29 @@ user_tier = payload.get("custom_claims", {}).get("user_tier")
 userTier, _ := claims.CustomClaims["user_tier"].(string)
 ```
 
+## Reading the subscription claim
+
+If your organization uses [subscription entitlement ingestion](/concepts/subscription-claims) (Enterprise), the managed `subscription` object appears under `custom_claims`:
+
+```javascript
+// Node.js
+const sub = payload.custom_claims?.subscription
+
+if (sub?.is_active && sub.environment === "production") {
+  grantAccess(sub.tier)     // your tier strings, e.g. "plus"
+} else {
+  grantAccess("free")       // absent claim ⇒ free
+}
+```
+
+```python
+# Python
+sub = payload.get("custom_claims", {}).get("subscription")
+is_premium = bool(sub and sub["is_active"] and sub["environment"] == "production")
+```
+
+Gate on the single `is_active` boolean — it already accounts for billing-retry grace periods. `expires_at` is epoch seconds. The claim is absent entirely when the device's sharing unit has no entitlement.
+
 ## Risk-based access control
 
 ```javascript
