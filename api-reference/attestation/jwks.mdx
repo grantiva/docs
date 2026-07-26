@@ -1,0 +1,51 @@
+---
+title: "JWKS"
+description: "Public keys for verifying Grantiva-issued JWTs"
+---
+
+Grantiva signs attestation JWTs with RS256. Fetch the public key set from the standard JWKS endpoint to verify tokens on your backend — see [Backend Verification](/backend-verification) for a full walkthrough.
+
+## Request
+
+```
+GET /.well-known/jwks.json
+```
+
+No authentication required.
+
+<Note>`GET /api/v1/attestation/public-key` is a backward-compatible alias that returns the same document.</Note>
+
+## Response
+
+```json
+{
+  "keys": [
+    {
+      "kty": "RSA",
+      "use": "sig",
+      "alg": "RS256",
+      "kid": "grantiva-v1",
+      "n": "xGOr-H7A...base64url-modulus...",
+      "e": "AQAB"
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `kty` | Key type — `RSA` |
+| `use` | Key usage — `sig` (signing) |
+| `alg` | Signing algorithm — `RS256` |
+| `kid` | Key identifier — `grantiva-v1`. Match this against the `kid` in the JWT header to select the verification key |
+| `n` / `e` | RSA public key modulus and exponent (base64url) |
+
+### Caching
+
+Responses include `Cache-Control: public, max-age=3600`. Cache the key set and honor the header — keys change only on rotation. Standard JWT libraries (jwks-rsa, PyJWKClient, etc.) handle this automatically.
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| 503 | JWKS not configured on the server. Contact support@grantiva.io if you see this in production |

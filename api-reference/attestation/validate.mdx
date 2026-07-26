@@ -85,13 +85,14 @@ POST /api/v1/attestation/validate
 
 ## Errors
 
-Error responses carry a stable `code`, a developer-readable `reason`, and (where useful) a `hint`:
+Error responses carry a stable `code`, a developer-readable `error` message, a `requestId` for support, and (where useful) a `hint`:
 
 ```json
 {
+  "error": "Challenge expired — challenges are valid for 5 minutes. Request a new one from GET /api/v1/attestation/challenge.",
   "code": "challenge_expired",
-  "reason": "Challenge expired — challenges are valid for 5 minutes. Request a new one from GET /api/v1/attestation/challenge.",
-  "hint": "See https://docs.grantiva.io/sdk/attestation#challenges for the challenge flow."
+  "hint": "See https://docs.grantiva.io/sdk/attestation#challenges for the challenge flow.",
+  "requestId": "0AF2-4C61"
 }
 ```
 

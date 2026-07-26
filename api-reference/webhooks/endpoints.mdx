@@ -7,11 +7,7 @@ description: "Manage outgoing webhook endpoints for your organization"
 
 ## Authentication
 
-All webhook management endpoints require a session token (cookie-based) or a `gpat_`/`aat_` API key:
-
-```
-Authorization: Bearer gpat_your_personal_api_token
-```
+Webhook management endpoints are **dashboard-session authenticated** (cookie-based) — API keys are not accepted on `/api/v1/org/*` routes.
 
 Callers must have **Admin** role or above within the organization.
 

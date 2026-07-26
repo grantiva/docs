@@ -1,0 +1,74 @@
+---
+title: "Refresh Token"
+description: "Exchange an App Attest assertion for a fresh JWT without re-attesting"
+---
+
+<Note>This endpoint is called automatically by the SDK when a cached JWT expires. You typically don't need to call it directly.</Note>
+
+Once a device has attested, it should not attest again — Apple's replay protection rejects reused attestation objects. Instead, the SDK proves possession of the registered key with an assertion (`DCAppAttestService.generateAssertion`) and receives a new JWT.
+
+## Request
+
+```
+POST /api/v1/attestation/refresh
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+
+### Body
+
+```json
+{
+  "keyId": "device-key-id",
+  "assertion": "base64-encoded-assertion",
+  "clientDataHash": "base64-encoded-hash",
+  "challenge": "a1b2c3d4e5f6...",
+  "subjectId": "9f1c2e34-...-household-uuid"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `keyId` | `string` | Yes | The key ID returned during the original attestation |
+| `assertion` | `string` | Yes | Base64-encoded assertion from `DCAppAttestService.generateAssertion` |
+| `clientDataHash` | `string` | Yes | Base64-encoded SHA256 hash of the challenge (same derivation as the attestation `clientDataHash`) |
+| `challenge` | `string` | Yes | Challenge from [GET /api/v1/attestation/challenge](/api-reference/attestation/challenge). Single-use, valid for 5 minutes |
+| `subjectId` | `string` | No | Sharing-unit id linking the device to a subscription entitlement. When omitted, the device keeps its existing Subject link — the subscription claim still rides the new token. See [Subscription Claims](/concepts/subscription-claims) |
+
+## Response
+
+```json
+{
+  "token": "eyJhbGciOi...",
+  "expiresAt": "2025-03-11T12:00:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `token` | `string` | New signed JWT, including custom claims evaluated at refresh time |
+| `expiresAt` | `string` | Token expiration (ISO 8601) |
+
+## Errors
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 400 | `bad_request` | Missing `keyId`, `assertion`, or `clientDataHash`, or a value is not valid base64 |
+| 400 | `challenge_invalid` / `challenge_expired` / `challenge_already_used` | Challenge validation failed — same rules as [validate](/api-reference/attestation/validate#errors) |
+| 402 | `quota_exceeded` | MAD limit reached and grace period expired. Only applies to devices not yet counted this month — devices already in the MAD count always refresh |
+| 403 | `forbidden` | The stored attestation for this key has been revoked |
+| 404 | `not_found` | No attestation found for this key ID — the device must attest first |
+| 409 | `reattest_required` | Assertion verification failed (key registered for a different Bundle/Team ID, or signature mismatch). The stored attestation is invalidated — drop local key state and re-attest. See [validate errors](/api-reference/attestation/validate#errors) |
+| 429 | `rate_limited` | Refresh shares the same per-tenant rate bucket as `/validate`. Check `Retry-After` and the `X-RateLimit-*` headers |
+
+<Note>The SDK self-heals `reattest_required` automatically: it clears the cached keyId and performs a fresh attestation. You only see this error if the retry also fails.</Note>
+
+## Notes
+
+- Each successful refresh advances the assertion counter server-side, so an assertion cannot be replayed.
+- Unlike `/validate`, this endpoint has no IP rate limit — the assertion is cryptographically signed by the device key — but the per-tenant tier limit still applies (shared `attest` bucket, see [API Conventions](/api-reference/conventions)).

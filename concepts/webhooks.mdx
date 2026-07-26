@@ -111,4 +111,4 @@ Failed deliveries (non-2xx response or timeout) are retried up to **3 times** wi
 
 ## Testing
 
-Send a test event from the webhook detail page in the dashboard. This fires a `webhook.test` event to verify your endpoint is reachable and correctly verifying signatures.
+Send a test event from the webhook detail page in the dashboard (or `POST /api/v1/org/webhooks/:id/test`). This synchronously delivers a synthetic `attestation.completed` payload — signed like a real event — and reports the HTTP status your endpoint returned, so you can verify reachability and signature handling.

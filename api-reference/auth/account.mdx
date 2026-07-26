@@ -1,0 +1,340 @@
+---
+title: "Account & Sessions"
+description: "Dashboard authentication: login, sessions, password reset, email changes, invites, and org switching"
+---
+
+<Note>These endpoints power the Grantiva dashboard. They use cookie-based sessions — the browser sends credentials with `credentials: 'include'` and Vapor manages the session cookie. They are documented here for completeness; server integrations should use [API keys](/api-reference/org/api-keys) instead.</Note>
+
+## The auth response object
+
+Login, `me`, `verify-email`, `switch-org`, and `clear-org` all return the same shape:
+
+```json
+{
+  "user": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "email": "you@example.com",
+    "role": "user",
+    "organizationId": null,
+    "isActive": true
+  },
+  "organization": {
+    "id": "661f9511-f3ac-52e5-b827-557766551111",
+    "name": "Acme Corp",
+    "slug": "acme-corp",
+    "serviceTier": "professional"
+  },
+  "entitlements": {
+    "tier": "professional",
+    "tierDisplay": "Business",
+    "limits": {
+      "maxApps": 10,
+      "maxMAD": 250000,
+      "maxCustomClaims": 10,
+      "maxWebhooks": 10,
+      "maxSeats": 10,
+      "maxFeatureFlags": 200,
+      "maxEnvironments": 10,
+      "maxRulesPerFlag": 20,
+      "analyticsRetentionDays": 90,
+      "rateLimit": 200
+    },
+    "features": {
+      "customClaims": true,
+      "allowedFormClaimTypes": ["static", "conditional", "dynamic"],
+      "riskScoring": true,
+      "webhooks": true,
+      "fraudDetection": true,
+      "complianceRules": true,
+      "deviceIntelligence": true,
+      "sso": false,
+      "onPremise": false,
+      "deviceTargeting": true,
+      "percentRollout": true,
+      "sseRealTime": true,
+      "flagScheduling": true,
+      "flagDependencies": true,
+      "rollback": true,
+      "approvalWorkflows": false
+    }
+  }
+}
+```
+
+`organization` and `entitlements` are `null` when the user has no organization context. Null values inside `limits` mean unlimited.
+
+---
+
+## Log in
+
+```
+POST /api/v1/auth/login
+```
+
+Rate limited per IP. Creates a session cookie on success.
+
+**Request body**
+
+```json
+{
+  "email": "you@example.com",
+  "password": "your-password"
+}
+```
+
+**Response** — `200 OK` — the auth response object.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 401 | Invalid email or password |
+| 403 | Account disabled, suspended, or email not yet verified |
+| 429 | Too many login attempts from this IP |
+
+---
+
+## Log out
+
+```
+POST /api/v1/auth/logout
+```
+
+Destroys the session. **Response** — `204 No Content`.
+
+---
+
+## Current user
+
+```
+GET /api/v1/auth/me
+```
+
+With a session cookie, returns the auth response object.
+
+Without a session, falls back to Bearer authentication for CLI/API keys (`aat_`, `grantiva_`, or `gpat_` prefixed) and returns a minimal identity instead:
+
+```json
+{
+  "email": "you@example.com",
+  "apiKeyPrefix": "gpat_1a2"
+}
+```
+
+`401` if neither a session nor a valid key is presented.
+
+---
+
+## Forgot password
+
+```
+POST /api/v1/auth/forgot-password
+```
+
+Rate limited per IP, and capped at 3 active reset tokens per account. Always returns the same message regardless of whether the email exists (no account enumeration). The reset link is valid for 1 hour.
+
+**Request body**
+
+```json
+{ "email": "you@example.com" }
+```
+
+**Response**
+
+```json
+{ "message": "If an account with that email exists, a reset link has been sent." }
+```
+
+---
+
+## Reset password
+
+```
+POST /api/v1/auth/reset-password
+```
+
+Consumes a reset token from the email link. On success, all other outstanding reset tokens and all existing sessions for the user are invalidated.
+
+**Request body**
+
+```json
+{
+  "token": "reset-token-from-email",
+  "password": "new-password",
+  "confirm_password": "new-password"
+}
+```
+
+**Response**
+
+```json
+{ "message": "Your password has been reset. You can now sign in with your new password." }
+```
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Passwords don't match, shorter than 8 characters, or the token is invalid/expired |
+
+---
+
+## Change email
+
+```
+POST /api/v1/auth/change-email
+```
+
+Session required. Sends a confirmation link to the **new** address; the current email stays active until confirmed. Token valid for 1 hour; max 3 pending requests.
+
+**Request body**
+
+```json
+{ "new_email": "new@example.com" }
+```
+
+**Response**
+
+```json
+{ "message": "Verification email sent to new@example.com. Click the link to confirm your new email address." }
+```
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 409 | Email already used by another account |
+| 429 | Too many pending email change requests |
+
+## Confirm email change
+
+```
+POST /api/v1/auth/confirm-email-change
+```
+
+Public (token-based, no session required).
+
+**Request body**
+
+```json
+{ "token": "token-from-confirmation-email" }
+```
+
+**Response**
+
+```json
+{
+  "message": "Your email address has been updated successfully.",
+  "email": "new@example.com"
+}
+```
+
+`400` for an invalid/expired token, `409` if the address was taken in the meantime.
+
+---
+
+## Verify email
+
+```
+GET /api/v1/auth/verify-email?token=<token>
+```
+
+Public. Exchanges an email-verification token for an active account **and** a session, then returns the auth response object so the dashboard can log the user straight in.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Missing token |
+| 422 | Token invalid or expired |
+
+---
+
+## Accept a team invite
+
+```
+POST /api/v1/auth/accept-invite
+```
+
+Session required. The authenticated user's email must match the invite's email. Idempotent — accepting an invite for an org you already belong to succeeds without duplicating membership.
+
+**Request body**
+
+```json
+{ "token": "invite-token-from-email" }
+```
+
+**Response**
+
+```json
+{
+  "orgId": "661f9511-f3ac-52e5-b827-557766551111",
+  "orgName": "Acme Corp",
+  "orgSlug": "acme-corp"
+}
+```
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 403 | Invite was sent to a different email address |
+| 404 | Invite not found or already used |
+| 410 | Invite expired (invites are valid for 7 days) |
+
+---
+
+## List organizations
+
+```
+GET /api/v1/auth/orgs
+```
+
+Session required. Returns the organizations the user belongs to (super admins see all orgs). `isActive` marks the org currently selected in the session.
+
+**Response**
+
+```json
+[
+  {
+    "id": "661f9511-f3ac-52e5-b827-557766551111",
+    "name": "Acme Corp",
+    "slug": "acme-corp",
+    "serviceTier": "professional",
+    "isActive": true
+  }
+]
+```
+
+---
+
+## Switch organization
+
+```
+POST /api/v1/auth/switch-org
+```
+
+Session required. Sets the active org for the session. Non-super-admins must be a member of the target org (`403` otherwise); `404` if the slug doesn't exist.
+
+**Request body**
+
+```json
+{ "slug": "acme-corp" }
+```
+
+**Response** — the auth response object for the newly active org.
+
+## Clear organization
+
+```
+POST /api/v1/auth/clear-org
+```
+
+Session required. Clears the active org from the session (used by super admins for the "All Organizations" view). Returns the auth response object with `organization` and `entitlements` set to `null`.
+
+---
+
+## See also
+
+- [CLI Sessions](/api-reference/auth/cli-sessions) — device-code auth for the Grantiva CLI
+- [API Keys](/api-reference/org/api-keys) — server-to-server authentication
