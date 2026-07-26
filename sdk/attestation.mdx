@@ -98,6 +98,24 @@ Your backend can decode the JWT to read:
 - Device model and OS version
 - Custom claims configured in the dashboard
 
+## Challenges
+
+Every attestation starts with a **one-time challenge** from the server. The SDK requests it automatically, but understanding the rules helps when debugging:
+
+- Challenges are valid for **5 minutes**. A slow attestation flow (e.g. paused in the debugger) can outlive its challenge — the server returns `challenge_expired` and the SDK requests a fresh one.
+- Challenges are **single-use**. Replaying a challenge returns `challenge_already_used`. Never cache or share challenges between attestation attempts.
+- The `clientDataHash` sent to Apple must be the SHA256 of the exact challenge string. A mismatch surfaces as `client_data_hash_invalid`.
+
+## Troubleshooting
+
+Common causes when the server rejects an attestation (`apple_validation_failed`):
+
+1. **Bundle ID / Team ID mismatch** — the values in the request don't match what App Attest signed against. Check that the SDK's `teamId` matches your Apple Developer Team ID and the build's bundle identifier is registered in the dashboard.
+2. **Running in the Simulator** — App Attest only works on real hardware. Use [API key mode](/simulator-setup) for Simulator and CI builds.
+3. **Reused or tampered attestation object** — attestation objects are single-use and bound to their challenge.
+4. **Key state drift** (`reattest_required`, HTTP 409) — the device's stored App Attest key no longer matches the server's records (backup restore, device transfer). The SDK self-heals by clearing local key state and re-attesting; you'll only see the error if that retry also fails.
+5. **MAD limit reached** (HTTP 402) — new device onboarding is paused because your plan's Monthly Active Device limit was exceeded and the grace period ended. See [Billing](/dashboard/billing).
+
 ## Error handling
 
 ```swift

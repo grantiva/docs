@@ -27,8 +27,8 @@ Your MAD count resets at the start of each billing period.
 Grantiva is designed to **never break your app for existing users**. Here's what happens as you scale:
 
 - **80% of limit reached** — You'll receive an email notification and see a warning banner in your dashboard. All attestations continue working normally.
-- **100% of limit reached** — You'll receive a second notification. A **7-day grace period** begins automatically. Devices already in your fleet keep working. New devices can still attest during the grace period, giving you time to upgrade.
-- **After the grace period** — If you haven't upgraded, new device onboarding pauses until you do. Existing attested devices are never affected — they continue working regardless.
+- **100% of limit reached** — You'll receive a second notification. A **grace period** begins automatically: 7 days on Free and Pro, 14 days on Business (Enterprise has no MAD limit). Devices already in your fleet keep working. New devices can still attest during the grace period, giving you time to upgrade.
+- **After the grace period** — If you haven't upgraded, new device onboarding pauses until you do. Existing attested devices are never affected — they continue working regardless. Blocked new-device attestations receive an HTTP `402 Payment Required` response with error code `quota_exceeded` — see [Validate Attestation](/api-reference/attestation/validate#errors).
 
 <Callout type="info">
 **No surprise charges.** We will always notify you before taking any action. You will never receive an unexpected bill.
@@ -70,7 +70,7 @@ Annual plans are charged upfront for 12 months. Prorated refunds are not issued 
 
 **Will my users' attestations fail if I exceed my MAD limit?**
 
-No. Existing attested devices always keep working. When you hit your limit, a 7-day grace period starts automatically — new devices can still attest during this window. After the grace period, new device onboarding pauses until you upgrade, but your existing users are never affected.
+No. Existing attested devices always keep working. When you hit your limit, a grace period starts automatically (7 days on Free/Pro, 14 days on Business) — new devices can still attest during this window. After the grace period, new device onboarding pauses until you upgrade, but your existing users are never affected.
 
 **Can I get a refund if I upgrade and then downgrade?**
 

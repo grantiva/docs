@@ -32,7 +32,8 @@ POST /api/v1/attestation/validate
   "osVersion": "18.0",
   "appVersion": "2.1.0",
   "appBuildNumber": "42",
-  "platform": "iOS"
+  "platform": "iOS",
+  "deviceFingerprint": "9f2b6c..."
 }
 ```
 
@@ -49,6 +50,7 @@ POST /api/v1/attestation/validate
 | `appVersion` | `string` | No | App version |
 | `appBuildNumber` | `string` | No | Build number |
 | `platform` | `string` | No | Platform (iOS, macOS) |
+| `deviceFingerprint` | `string` | No | Stable hashed device fingerprint (sent by SDK 2.0.4+). Used as a secondary key for MAD counting so a device whose App Attest key is regenerated mid-month still counts once toward billing |
 
 ## Response
 
@@ -60,6 +62,7 @@ POST /api/v1/attestation/validate
   "deviceIntelligence": {
     "deviceId": "abc123",
     "riskScore": 12,
+    "riskCategory": "trusted",
     "deviceIntegrity": "valid",
     "jailbreakDetected": false,
     "attestationCount": 5,
@@ -76,5 +79,32 @@ POST /api/v1/attestation/validate
 | `isValid` | `boolean` | Whether the device passed attestation |
 | `token` | `string` | Signed JWT token |
 | `expiresAt` | `string` | Token expiration (ISO 8601) |
-| `deviceIntelligence` | `object` | Device risk and integrity data |
-| `customClaims` | `object` | Your configured custom claims |
+| `deviceIntelligence` | `object` | Device risk and integrity data. `riskScore` is `null` on the Free tier — use `riskCategory` |
+| `customClaims` | `object` | Your configured custom claims, flattened to strings. Nested claim objects are stringified in this map — read structured claims from the decoded JWT instead |
+
+## Errors
+
+Error responses carry a stable `code`, a developer-readable `reason`, and (where useful) a `hint`:
+
+```json
+{
+  "code": "challenge_expired",
+  "reason": "Challenge expired — challenges are valid for 5 minutes. Request a new one from GET /api/v1/attestation/challenge.",
+  "hint": "See https://docs.grantiva.io/sdk/attestation#challenges for the challenge flow."
+}
+```
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 400 | `challenge_invalid` | Challenge not found or invalid |
+| 400 | `challenge_expired` | Challenges are valid for 5 minutes and single-use |
+| 400 | `challenge_already_used` | Each challenge is single-use |
+| 400 | `attestation_object_invalid` | Not valid base64-encoded CBOR from `attestKey()` |
+| 400 | `key_id_invalid` | Key ID must come from `DCAppAttestService.generateKey()` |
+| 400 | `client_data_hash_invalid` | Must be a base64-encoded SHA256 hash of the challenge |
+| 401 | `apple_validation_failed` | Cryptographic validation failed — wrong Bundle/Team ID, reused or tampered attestation, or certificate chain failure |
+| 402 | `quota_exceeded` | MAD limit reached and grace period expired. Response includes `limit`, `current`, and `upgradeUrl`. Existing devices keep working — only new device onboarding is paused |
+| 409 | `reattest_required` | The device's stored key state has diverged from the server (key mismatch or signature failure). Drop local key state and re-attest — the SDK does this automatically |
+| 429 | — | Rate limited. Check `Retry-After` and the `X-RateLimit-*` headers |
+
+<Note>The SDK (2.0.3+) self-heals `reattest_required` automatically: it clears the cached keyId and re-runs the full attestation once. You only see this error if the retry also fails.</Note>

@@ -7,14 +7,27 @@ Different API endpoints use different authentication methods depending on the ca
 
 ## SDK / Mobile app
 
-The iOS SDK authenticates using **Bundle ID + Team ID** headers. No API keys are sent from the device.
+The iOS SDK identifies your app with **Bundle ID + Team ID** headers:
 
 ```
 X-Bundle-ID: com.yourapp.example
 X-Team-ID: ABBM6U9RM5
 ```
 
-These headers are sent automatically by the SDK. Used by: Attestation, Feedback, Support, Feature Flags.
+These headers are sent automatically by the SDK — but they only *identify* the tenant, they are not authentication. Bundle IDs and Team IDs are discoverable from the App Store, so they are not secrets.
+
+**Attestation endpoints** (`/challenge`, `/validate`, `/refresh`) need only these headers — the attestation object itself is the proof.
+
+**All other SDK endpoints** — feature flags, the flag SSE stream, heartbeat, feedback, and support — additionally require one of:
+
+- **A Grantiva JWT** issued by attestation, sent as `Authorization: Bearer <jwt>` (this is what the SDK does automatically after `validateAttestation()`), or
+- **An API key** (simulator/development mode, or server-side callers).
+
+Requests with only the identity headers receive `401 Unauthorized` with `WWW-Authenticate: Bearer realm="grantiva"`.
+
+<Note>
+In practice the SDK handles this for you: run `validateAttestation()` once before using flags, feedback, or support. In the iOS Simulator (no App Attest), initialize the SDK with an API key instead — see [Simulator Setup](/simulator-setup).
+</Note>
 
 ## Server-to-server
 
@@ -58,7 +71,7 @@ curl -H "Authorization: Admin your_admin_key" https://api.grantiva.io/admin/v1/t
 
 | Endpoint group | Auth method | Who uses it |
 |---------------|-------------|-------------|
-| Attestation, Feedback, Flags | Bundle ID + Team ID headers | iOS SDK |
+| Attestation (challenge/validate/refresh) | Bundle ID + Team ID headers + attestation object | iOS SDK |
+| Flags, Feedback, Support, Heartbeat | Identity headers **+** attestation JWT or API key | iOS SDK (post-attestation) |
 | Analytics, VRT | API key | Your backend, CLI |
-| Protected routes | JWT token | iOS SDK (post-attestation) |
 | Admin | Admin API key | Internal tooling |
