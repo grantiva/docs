@@ -51,6 +51,8 @@ POST /api/v1/feedback/features/:featureId/comments
 |-------|------|----------|-------------|
 | `authorId` | `string` | Yes | User or device identifier |
 | `body` | `string` | Yes | Comment text (1–2,000 characters) |
+| `pushToken` | `string` | No | Hex APNs token — subscribes this device to the thread channel for admin-reply pushes. See [Push](/push/overview#feedback-push-integration) |
+| `pushEnvironment` | `string` | No | `sandbox` or `production` |
 
 ### Response
 

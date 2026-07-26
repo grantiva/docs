@@ -60,6 +60,12 @@
             ]
           },
           {
+            "group": "Push",
+            "pages": [
+              "push/overview"
+            ]
+          },
+          {
             "group": "Dashboard",
             "pages": [
               "dashboard/overview",
@@ -116,6 +122,13 @@
             "group": "Webhooks",
             "pages": [
               "api-reference/webhooks/endpoints"
+            ]
+          },
+          {
+            "group": "Push",
+            "pages": [
+              "api-reference/push/subscriptions",
+              "api-reference/push/publish"
             ]
           },
           {

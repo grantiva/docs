@@ -1,0 +1,60 @@
+---
+title: "Push Subscriptions"
+description: "Subscribe device tokens to channels"
+---
+
+Device-facing endpoints, authenticated with the app's **public key** (`grv_pub_`, sent as `X-API-Key` or `Authorization: Bearer`). Rate limit: 240 req/min per key.
+
+## Subscribe
+
+```
+POST /v1/apps/:appID/subscriptions
+```
+
+```json
+{
+  "channel": "order:42:status",
+  "deviceToken": "a1b2c3...",
+  "tokenType": "alert",
+  "environment": "production",
+  "activityID": null,
+  "metadata": { "locale": "en_US" },
+  "previousToken": null
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `channel` | `string` | Yes | Opaque channel name, max 255 printable chars |
+| `deviceToken` | `string` | Yes | Hex APNs token |
+| `tokenType` | `string` | Yes | `alert`, `liveactivity-start`, or `liveactivity-update` |
+| `activityID` | `string` | For `liveactivity-update` | The Live Activity this update token belongs to |
+| `environment` | `string` | No | `sandbox` or `production` |
+| `metadata` | `object` | No | Arbitrary key-value data stored with the subscription |
+| `previousToken` | `string` | No | A rotated token — all its same-type subscriptions are deleted (push-to-start rotation) |
+
+Subscriptions upsert by (app, deviceToken, tokenType, channel): re-registering updates rather than duplicates. Returns **201** on create, **200** on update.
+
+## List a device's subscriptions
+
+```
+GET /v1/apps/:appID/subscriptions?deviceToken=<hex>
+```
+
+Returns the device's subscriptions — useful for reconciliation after reinstall or token rotation.
+
+## Unsubscribe
+
+```
+DELETE /v1/apps/:appID/subscriptions
+```
+
+```json
+{
+  "deviceToken": "a1b2c3...",
+  "channel": "order:42:status",
+  "tokenType": "alert"
+}
+```
+
+With `channel` + `tokenType`, removes that one subscription. With `deviceToken` alone, wipes every subscription for the device (logout). Returns `{ "removed": <count> }`.
