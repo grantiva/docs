@@ -10,9 +10,16 @@ Webhooks send HTTP POST requests to your server when events occur in Grantiva. A
 | Event | Description |
 |-------|-------------|
 | `device.new` | First attestation from a new device |
+| `device.attested.first` | A device completes its first successful attestation |
 | `device.high_risk` | Device risk score exceeds your threshold |
 | `device.attestation_failed` | A device fails attestation validation |
 | `attestation.anomaly` | Unusual attestation pattern detected |
+| `flag.created` | A feature flag was created |
+| `flag.updated` | A feature flag's value or state changed |
+| `flag.deleted` | A feature flag was deleted |
+| `subscription.changed` | A subscription entitlement changed (Enterprise — see [Subscription Claims](/concepts/subscription-claims)) |
+| `subscription.expired` | An entitlement expired or was revoked |
+| `subscription.refunded` | An entitlement was refunded |
 
 ## Setup
 
@@ -67,6 +74,36 @@ func verifyWebhook(body: Data, signature: String, secret: String) -> Bool {
 ```
 
 Always verify signatures before processing webhook payloads.
+
+## Subscription events
+
+`subscription.changed` fires whenever a [subscription entitlement](/concepts/subscription-claims) materially changes (tier, status, interval, expiry, auto-renew, or product); identical redeliveries from Apple/Stripe do not re-fire it. `subscription.expired` additionally fires when status becomes `expired` or `revoked`, and `subscription.refunded` on refunds.
+
+```json
+{
+  "event": "subscription.changed",
+  "timestamp": "2026-06-22T19:00:00Z",
+  "data": {
+    "subject_id": "<sharing-unit UUID>",
+    "tier": "plus",
+    "status": "active",
+    "interval": "annual",
+    "source": "apple",
+    "product_id": "com.example.plus.annual",
+    "expires_at": "2026-12-01T00:00:00Z",
+    "source_subscription_id": "2000000xxxxxxxxx",
+    "environment": "production",
+    "auto_renew": "true",
+    "event_id": "<uuid>"
+  }
+}
+```
+
+Handling notes:
+
+- **Dedupe on `data.event_id`** and key any cache eviction by `data.subject_id`.
+- `expires_at` is **ISO-8601 here but epoch seconds in the JWT claim** — each surface follows its own convention.
+- Treat the webhook as a cache-bust nudge: re-read the claim from the next JWT rather than trusting the webhook body as authoritative.
 
 ## Retries
 

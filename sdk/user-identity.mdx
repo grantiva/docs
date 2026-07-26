@@ -51,6 +51,31 @@ Properties are used for feature flag targeting and segmentation. Common examples
 - `"beta_tester"`: `"true"`
 - `"company_size"`: `"50"`
 
+## Subject ID (subscription sharing unit)
+
+Separate from user identity, `setSubjectId` links the device to a **sharing unit** (family/household) for [subscription entitlement claims](/concepts/subscription-claims) (SDK 2.1.0+, Enterprise):
+
+```swift
+// A stable UUID string your app mints per household
+grantiva.setSubjectId(familyId)
+
+// When the device leaves the household
+grantiva.clearSubjectId()
+
+// Read back
+let current = grantiva.subjectId
+```
+
+The id rides the next attestation or token refresh; the backend then projects `custom_claims.subscription` into the JWT for every device sharing the same id. Use the identical value as the StoreKit `appAccountToken` and Stripe `client_reference_id`.
+
+Don't confuse the two:
+
+| | `identify(_:)` | `setSubjectId(_:)` |
+|---|---|---|
+| Scopes | The individual user | The paying household |
+| Drives | Flag targeting, feedback, analytics | The `subscription` JWT claim |
+| Cardinality | One per person | One per sharing unit — same value on every member's device |
+
 ## Device context (automatic)
 
 The SDK automatically collects device context — you don't need to set this:

@@ -1,0 +1,36 @@
+---
+title: "Stripe Entitlement Webhook"
+description: "Inbound endpoint for subscription events from your own Stripe account"
+---
+
+```
+POST /webhooks/stripe/entitlements/:orgID
+```
+
+This endpoint receives events from **your own Stripe account** (the one selling subscriptions to your users) — it is unrelated to Grantiva's billing. Get your organization's exact path from the `stripeWebhookPath` field of [`GET /api/v1/org/entitlement-config`](/api-reference/entitlements/config), then add it as a webhook endpoint in your Stripe dashboard:
+
+```
+https://api.grantiva.io/webhooks/stripe/entitlements/<orgID>
+```
+
+Store that Stripe endpoint's signing secret in your entitlement configuration (`stripe.signingSecret`) — Grantiva verifies the `Stripe-Signature` header of every delivery against it.
+
+## Events to subscribe
+
+| Stripe event | Effect |
+|--------------|--------|
+| `checkout.session.completed` | Creates the entitlement. Requires `client_reference_id` (the sharing-unit UUID) and `metadata.grantiva_price_id` on the session |
+| `customer.subscription.created` | Creates/updates the entitlement |
+| `customer.subscription.updated` | Updates status, interval, expiry, auto-renew |
+| `customer.subscription.deleted` | Marks the entitlement expired |
+
+The price id is matched against your `stripe.prices` mapping to resolve the tier.
+
+## Response semantics
+
+| Status | When |
+|--------|------|
+| 200 | Event processed — **or** permanently unprocessable (ingestion disabled, org not Enterprise, missing `client_reference_id`, unmapped price, replayed event, bad signature) |
+| 5xx | Transient server error — Stripe will retry |
+
+Permanent conditions intentionally return 200 so Stripe stops retrying them. Replay protection is keyed on the Stripe event `id`.

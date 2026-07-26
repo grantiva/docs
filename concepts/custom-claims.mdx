@@ -16,6 +16,10 @@ Custom claims let you embed additional data in the JWT returned by attestation. 
 
 External claims are available on Enterprise plans only.
 
+<Note>
+`subscription` is a **reserved claim key**, managed by Grantiva's [subscription entitlement ingestion](/concepts/subscription-claims). Creating a custom claim named `subscription` returns a 400.
+</Note>
+
 ## Managing claims
 
 Claims are managed from the [dashboard](https://grantiva.io/dashboard) or via the API.
