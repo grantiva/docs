@@ -1,0 +1,223 @@
+---
+title: "GrantivaUI"
+description: "Drop-in SwiftUI views for feature requests and support tickets"
+---
+
+GrantivaUI is a separate SwiftUI package that renders the [feedback service](/sdk/feedback) for you. Add a feedback portal — feature requests, voting, comments, and support tickets — to your app without writing the screens yourself.
+
+<Note>
+GrantivaUI currently covers **feedback and support only**. There are no attestation or feature flag components — call [`attest()`](/sdk/attestation) and the [flags API](/sdk/feature-flags) directly and build those surfaces yourself.
+</Note>
+
+## Requirements
+
+- iOS 18+ or macOS 15+
+- [GrantivaSDK](/sdk/installation) **2.0.1+**
+
+## Installation
+
+### Xcode
+
+1. Go to **File > Add Package Dependencies**
+2. Enter `https://github.com/grantiva/GrantivaUI`
+3. Add `GrantivaUI` to your app target
+
+### Package.swift
+
+```swift
+dependencies: [
+    .package(url: "https://github.com/grantiva/GrantivaUI.git", from: "1.0.0")
+]
+```
+
+GrantivaUI pulls in `grantiva/ios-sdk` itself, so you do not need to declare the SDK separately.
+
+## Quick start
+
+Three pieces wire it up: the SDK instance, a `FeedbackStore` that holds the state, and a `FeedbackUIService` injected through the environment.
+
+```swift
+import SwiftUI
+import Grantiva
+import GrantivaUI
+
+@main
+struct MyApp: App {
+    let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
+
+    @State private var store = FeedbackStore()
+
+    var body: some Scene {
+        WindowGroup {
+            ContentView(store: store)
+                .feedbackService(.live(grantiva.feedback, store: store))
+        }
+    }
+}
+
+struct ContentView: View {
+    let store: FeedbackStore
+
+    @State private var showFeedback = false
+
+    var body: some View {
+        Button("Feedback") { showFeedback = true }
+            .sheet(isPresented: $showFeedback) {
+                FeedbackContainerView(store: store)
+            }
+    }
+}
+```
+
+`FeedbackContainerView` brings its own `NavigationStack`, so present it as a sheet or a full-screen cover rather than nesting it inside another one.
+
+## Store
+
+`FeedbackStore` is a `@MainActor @Observable` class holding every piece of feedback state. Views read it directly — no view models.
+
+```swift
+store.featureRequests        // [FeatureRequest]
+store.selectedFeatureRequest // FeatureRequest?
+store.featureComments        // [FeatureComment]
+store.tickets                // [SupportTicket]
+store.selectedTicket         // SupportTicket?
+store.ticketMessages         // [TicketMessage]
+
+store.isLoadingFeatures      // Bool
+store.isLoadingFeatureDetail // Bool
+store.isLoadingComments      // Bool
+store.isLoadingTickets       // Bool
+store.isLoadingTicketDetail  // Bool
+store.isSubmitting           // Bool
+
+store.error                  // Error?
+```
+
+Create one store and pass it to every view. The store is only ever mutated through the injected service.
+
+## Views
+
+All views are public and take the store as their first argument.
+
+| View | Initializer |
+|------|-------------|
+| `FeedbackContainerView` | `init(store: FeedbackStore)` |
+| `FeatureRequestListView` | `init(store: FeedbackStore, onSelect: @escaping (FeatureRequest) -> Void)` |
+| `FeatureRequestDetailView` | `init(store: FeedbackStore, featureId: UUID)` |
+| `SubmitFeatureRequestView` | `init(store: FeedbackStore)` |
+| `SupportTicketListView` | `init(store: FeedbackStore, onSelect: @escaping (SupportTicket) -> Void)` |
+| `TicketDetailView` | `init(store: FeedbackStore, ticketId: UUID)` |
+| `SubmitTicketView` | `init(store: FeedbackStore)` |
+
+### FeedbackContainerView
+
+The drop-in. A tabbed container over feature requests and support tickets, with a toolbar **+** that presents the matching submit sheet and navigation into the detail views.
+
+```swift
+FeedbackContainerView(store: store)
+    .feedbackService(.live(grantiva.feedback, store: store))
+    .grantivaTheme(.default)
+```
+
+If you want the whole portal, this is the only view you need.
+
+### Feature request views
+
+```swift
+FeatureRequestListView(store: store) { feature in
+    selectedFeature = feature
+}
+```
+
+The list supports voting inline and pull-to-refresh. `FeatureRequestDetailView` shows the description, vote button, and comments; `SubmitFeatureRequestView` is a form sheet that dismisses itself on success.
+
+```swift
+FeatureRequestDetailView(store: store, featureId: feature.id)
+SubmitFeatureRequestView(store: store)
+```
+
+### Support ticket views
+
+```swift
+SupportTicketListView(store: store) { ticket in
+    selectedTicket = ticket
+}
+
+TicketDetailView(store: store, ticketId: ticket.id)
+SubmitTicketView(store: store)
+```
+
+`TicketDetailView` renders the message thread with user and admin messages distinguished, and includes a reply field.
+
+## Theming
+
+Every view reads `GrantivaTheme` from the environment, so one `.grantivaTheme()` modifier on a parent applies everywhere below it.
+
+```swift
+let theme = GrantivaTheme(
+    accentColor: .indigo,
+    successColor: .mint,
+    cornerRadius: 8,
+    spacing: 12
+)
+
+FeedbackContainerView(store: store)
+    .grantivaTheme(theme)
+```
+
+Every parameter has a default, so override only what you care about.
+
+| Property | Type | Default | Used for |
+|----------|------|---------|----------|
+| `accentColor` | `Color` | `.blue` | Buttons, voted state, admin badges |
+| `secondaryColor` | `Color` | `.secondary` | Secondary text and icons |
+| `backgroundColor` | `Color` | Adaptive system background | Main view background |
+| `surfaceColor` | `Color` | Adaptive secondary background | Cards and grouped areas |
+| `textPrimary` | `Color` | `.primary` | Primary text |
+| `textSecondary` | `Color` | `.secondary` | Metadata and captions |
+| `destructiveColor` | `Color` | `.red` | Destructive actions |
+| `successColor` | `Color` | `.green` | Shipped status, resolved tickets |
+| `warningColor` | `Color` | `.orange` | Error banners, high priority |
+| `cornerRadius` | `CGFloat` | `12` | Card corner radius |
+| `spacing` | `CGFloat` | `16` | Standard spacing between elements |
+
+`backgroundColor` and `surfaceColor` default to `GrantivaTheme.adaptiveBackground` and `GrantivaTheme.adaptiveSurface`, which resolve per platform and follow light and dark mode.
+
+## Dependency injection
+
+`FeedbackUIService` is a struct of closures, one per operation. `.live(_:store:)` binds them to the SDK's `FeedbackService` and writes results into your store, including optimistic vote-count updates and error capture.
+
+```swift
+// Production
+.feedbackService(.live(grantiva.feedback, store: store))
+
+// SwiftUI previews and tests — no network
+.feedbackService(.preview)
+```
+
+The environment default is `.preview`, so previews of any GrantivaUI view work without setup.
+
+For tests you can supply your own closures. All eleven are required:
+
+```swift
+let stub = FeedbackUIService(
+    fetchFeatureRequests: { },
+    fetchFeatureRequest: { _ in },
+    submitFeatureRequest: { _, _ in true },
+    vote: { _ in },
+    removeVote: { _ in },
+    fetchComments: { _ in },
+    addComment: { _, _ in true },
+    fetchTickets: { },
+    fetchTicketDetail: { _ in },
+    submitTicket: { _, _, _ in true },
+    replyToTicket: { _, _ in true }
+)
+```
+
+The submit-style closures return `Bool` so the presenting view knows whether to dismiss; the fetch closures return `Void` and write into the store.
+
+## Accessibility
+
+- **VoiceOver** — list rows and interactive elements carry combined labels
+- **Dynamic Type** — all text uses system font styles and scales
