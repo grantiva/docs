@@ -1,0 +1,345 @@
+---
+title: "JWT Claims"
+description: "Every claim Grantiva signs into the attestation token, what populates it, and how to verify it server-side"
+---
+
+When a device passes attestation, Grantiva returns an **RS256-signed JWT**. On paid plans that token is not just a proof of attestation — it carries device intelligence: risk score, integrity level, jailbreak status, and attestation history, all signed. Your backend can read them without calling Grantiva.
+
+This page is the authoritative reference for what is actually in the token.
+
+<Warning>
+**`risk_score` is a snapshot taken at attestation time, not a live value.**
+
+Tokens are valid for 1 hour by default. A device that becomes suspicious *after* its token was issued keeps presenting a signed token carrying the old, lower score until that token expires and the device re-attests.
+
+Treat the claim as **advisory**. It is a good input for routine gating (rate limits, feature access, logging). For high-stakes actions — payments, transfers, credential changes, account recovery — require a fresh attestation (call `refresh` or re-attest) or check the device server-side, and do not rely on a token minted up to an hour ago.
+</Warning>
+
+## The JWT and the attestation response are two different things
+
+The `POST /api/v1/attestation/validate` response body and the signed token contain overlapping but **different** data. Mixing them up is the most common integration bug.
+
+| | Signed JWT (`token`) | Response body (`deviceIntelligence`) |
+|---|---|---|
+| Reaches your backend | Yes — the app forwards the token | No, unless your app forwards it separately |
+| Tamper-proof | Yes — RS256 signature | No — it is just JSON your app received |
+| `risk_score` | Paid plans only, integer | `riskScore`, `null` on Free |
+| `risk_category` | **Not a JWT claim** | `riskCategory` — `"trusted"` / `"suspicious"` / `"blocked"` |
+| Field naming | `snake_case` | `camelCase` |
+
+<Warning>
+There is **no `risk_category` claim in the JWT**. It exists only in the attestation response body. If your backend reads `payload.risk_category` it will always be `undefined`. Derive the category from `risk_score` instead — the thresholds are on [Risk Scoring](/concepts/risk-scoring).
+</Warning>
+
+## Absent, not null
+
+Claims that do not apply to your plan are **omitted from the token entirely** — they are not present with a `null` value. Check for absence, not for null:
+
+```javascript
+if (payload.risk_score === undefined) {
+  // Free plan, or a claim your plan does not include
+}
+```
+
+## Claim reference
+
+Availability by plan. **✓** present · **◐** conditional, see the note for that claim · **—** omitted from the token entirely.
+
+### Standard claims
+
+| Claim | Type | Free | Pro | Business | Enterprise | Notes |
+|---|---|:--:|:--:|:--:|:--:|---|
+| `sub` | string | ✓ | ✓ | ✓ | ✓ | The App Attest key id. **The stable per-device identifier.** |
+| `kid` | string | ✓ | ✓ | ✓ | ✓ | Same value as `sub`. Not the JWKS key id — that is in the JWT *header*. |
+| `iat` | integer | ✓ | ✓ | ✓ | ✓ | Issued-at, epoch seconds. |
+| `exp` | integer | ✓ | ✓ | ✓ | ✓ | Expiry, epoch seconds. Default TTL 1 hour, configurable per organization. |
+| `iss` | string | ✓ | ✓ | ✓ | ✓ | **Your organization's issuer string**, not a fixed Grantiva value. See [Issuer and audience](#issuer-and-audience). |
+| `aud` | string | ✓ | ✓ | ✓ | ✓ | Your organization's audience string. |
+
+### Device identity
+
+| Claim | Type | Free | Pro | Business | Enterprise | Notes |
+|---|---|:--:|:--:|:--:|:--:|---|
+| `team_id` | string | ✓ | ✓ | ✓ | ✓ | Apple Developer Team ID the attestation was bound to. |
+| `bundle_id` | string | ✓ | ✓ | ✓ | ✓ | Bundle ID the attestation was bound to. |
+| `device_id` | string | ◐ | ◐ | ◐ | ◐ | Conditional — see [device_id](#device-id) below. Do not use as a primary key. |
+
+### Device intelligence
+
+| Claim | Type | Free | Pro | Business | Enterprise | Notes |
+|---|---|:--:|:--:|:--:|:--:|---|
+| `risk_score` | integer | — | ✓ | ✓ | ✓ | 0–100. Snapshot at issue time. |
+| `device_integrity` | string | — | ✓ | ✓ | ✓ | `"high"`, `"medium"`, `"low"`, or `"unknown"`. |
+| `jailbreak_detected` | boolean | — | ✓ | ✓ | ✓ | Also `true` for development-AAGUID builds (Xcode, internal TestFlight, sideloaded). |
+| `attestation_count` | integer | — | ✓ | ✓ | ✓ | Lifetime attestations from this device profile. |
+| `first_seen` | integer | — | ✓ | ✓ | ✓ | Epoch seconds. First attestation from this device. |
+| `last_attestation` | integer | — | ✓ | ✓ | ✓ | Epoch seconds. Equal to `iat` — set when the token is minted. |
+| `permissions` | string[] | — | — | ✓ | ✓ | Grantiva-derived capability hints, e.g. `["basic","payments","transfers"]`. Not your app's permission model. |
+| `device_model` | string | — | — | — | ✓ | e.g. `"iPhone15,2"`. Only what the SDK reported. |
+| `os_version` | string | — | — | — | ✓ | e.g. `"18.0"`. |
+| `app_version` | string | — | — | — | ✓ | e.g. `"2.1.0"`. |
+| `ip_address` | string | — | — | — | ✓ | Peer address seen by the API. |
+| `user_agent` | string | — | — | — | ✓ | Raw `User-Agent` header. |
+| `country` | string | — | — | — | ◐ | Enterprise only, and only when an edge country header is present. See below. |
+| `network_type` | string | — | — | — | ◐ | Enterprise only, coarse heuristic. See below. |
+
+<Note>
+`device_model`, `os_version`, and `app_version` are **Enterprise-only in the token**. They are collected on every paid plan and are visible in the dashboard and analytics API on Pro and Business — they are simply not projected into the JWT below Enterprise. If your Pro or Business backend needs the device model, read it from the [analytics API](/api-reference/analytics/devices), not the token.
+</Note>
+
+### Custom claims
+
+| Claim | Type | Free | Pro | Business | Enterprise |
+|---|---|:--:|:--:|:--:|:--:|
+| `custom_claims` | object | ✓ (max 1, static) | ✓ (max 5) | ✓ (max 10) | ✓ (max 20) |
+
+Your configured claims are nested under `custom_claims`, preserving their JSON types. Grantiva's managed `subscription` object also lives here. See [Custom Claims](/concepts/custom-claims) and [Subscription Claims](/concepts/subscription-claims).
+
+The key is omitted entirely when no claims are configured on Free, and is an empty object `{}` on paid plans when no claims evaluate to a value.
+
+## Decoded examples
+
+### Business plan
+
+```json
+{
+  "sub": "SGVsbG8sIHdvcmxkIQ-keyId",
+  "kid": "SGVsbG8sIHdvcmxkIQ-keyId",
+  "iat": 1772107200,
+  "exp": 1772110800,
+  "iss": "app-attest-acme",
+  "aud": "Acme",
+  "team_id": "ABBM6U9RM5",
+  "bundle_id": "com.acme.app",
+  "risk_score": 12,
+  "device_integrity": "high",
+  "jailbreak_detected": false,
+  "attestation_count": 47,
+  "first_seen": 1764331200,
+  "last_attestation": 1772107200,
+  "permissions": ["basic", "payments", "transfers", "high_value", "admin"],
+  "custom_claims": {
+    "user_tier": "premium",
+    "subscription": {
+      "tier": "plus",
+      "is_active": true,
+      "environment": "production",
+      "expires_at": 1774699200
+    }
+  }
+}
+```
+
+Note what is *not* there: no `risk_category`, no `device_model`, no `country`, no `device_id`.
+
+### Free plan
+
+```json
+{
+  "sub": "SGVsbG8sIHdvcmxkIQ-keyId",
+  "kid": "SGVsbG8sIHdvcmxkIQ-keyId",
+  "iat": 1772107200,
+  "exp": 1772110800,
+  "iss": "app-attest-acme",
+  "aud": "Acme",
+  "team_id": "ABBM6U9RM5",
+  "bundle_id": "com.acme.app",
+  "custom_claims": {
+    "environment": "production"
+  }
+}
+```
+
+On Free the token proves attestation succeeded and nothing more. The risk category is still returned in the attestation **response body** as `deviceIntelligence.riskCategory` — your app has to forward it if your backend needs it, and it is not signed.
+
+## Issuer and audience
+
+`iss` and `aud` are **per-organization**, not fixed Grantiva strings. The default issuer is `app-attest-<your-organization-name-lowercased>` and the default audience is your organization name exactly as it was registered. There is no self-serve editor for these today — if you need them changed, contact support@grantiva.io.
+
+<Warning>
+Do not hardcode `issuer: "grantiva"` in your verification code — no Grantiva token is issued with that value and verification will fail. Read the exact values from a real token — decode one from your own app and copy `iss` and `aud` verbatim — then pin them.
+</Warning>
+
+Pinning `iss` and `aud` matters: it is what stops a token minted for a different organization from being accepted by your backend.
+
+## device_id
+
+`device_id` is **not** a reliable identifier and is populated inconsistently:
+
+- **`POST /attestation/validate`** — carries the device id supplied on the challenge request (`GET /attestation/challenge?device_id=...`). The iOS SDK does not send that parameter, so **the claim is absent on the normal SDK attestation path**.
+- **`POST /attestation/refresh`** — carries Grantiva's internal device-profile UUID.
+
+Use `sub` (the App Attest key id) as your per-device key. It is present on every token on every plan, and it is the identity Apple's attestation actually binds.
+
+## Verifying the token server-side
+
+Grantiva signs with **RS256**. Publish keys are at `https://api.grantiva.io/.well-known/jwks.json` (alias: `GET /api/v1/attestation/public-key`). Match the `kid` in the **JWT header** — not the `kid` claim in the payload — against the key set. Standard libraries do this for you.
+
+Cache the key set. It is served with `Cache-Control: public, max-age=3600` and changes only on rotation.
+
+### Node.js
+
+```bash
+npm install jose
+```
+
+```javascript
+import { createRemoteJWKSet, jwtVerify } from 'jose'
+
+// Create once at module scope — it caches keys and refreshes on rotation.
+const JWKS = createRemoteJWKSet(
+  new URL('https://api.grantiva.io/.well-known/jwks.json')
+)
+
+// Per-organization. Decode a real token to read the exact values.
+const ISSUER = 'app-attest-acme'
+const AUDIENCE = 'Acme'
+
+export async function verifyDeviceToken(token) {
+  const { payload } = await jwtVerify(token, JWKS, {
+    algorithms: ['RS256'],
+    issuer: ISSUER,
+    audience: AUDIENCE,
+  })
+  // jose already checked signature, exp, iss and aud.
+  return payload
+}
+
+// Authorization decision from the signed risk score.
+export function riskGate(payload, { highStakes = false } = {}) {
+  const score = payload.risk_score
+
+  if (score === undefined) {
+    // Free plan, or a plan without risk scoring in the token.
+    // Fall back to your own signals — do not treat "no score" as "safe".
+    return highStakes ? 'step-up' : 'allow'
+  }
+
+  if (payload.jailbreak_detected) return 'deny'
+  if (score > 75) return 'deny'
+  if (score > 20) return highStakes ? 'step-up' : 'allow'
+
+  // score <= 20. The token can still be up to an hour old.
+  const ageSeconds = Math.floor(Date.now() / 1000) - payload.iat
+  if (highStakes && ageSeconds > 300) return 'step-up'
+
+  return 'allow'
+}
+
+// Express middleware
+export async function requireAttestedDevice(req, res, next) {
+  const token = req.headers.authorization?.replace(/^Bearer /, '')
+  if (!token) return res.status(401).json({ error: 'missing device token' })
+
+  let payload
+  try {
+    payload = await verifyDeviceToken(token)
+  } catch {
+    return res.status(401).json({ error: 'invalid or expired device token' })
+  }
+
+  const decision = riskGate(payload, { highStakes: false })
+  if (decision === 'deny') {
+    return res.status(403).json({ error: 'device blocked' })
+  }
+
+  req.device = { keyId: payload.sub, payload, decision }
+  next()
+}
+```
+
+`step-up` means: ask the client for a fresh attestation (the SDK's `refresh`) and re-run the gate, or require a second factor. It does not mean "allow anyway".
+
+### Python
+
+```bash
+pip install "PyJWT[crypto]"
+```
+
+```python
+import time
+import jwt
+from jwt import PyJWKClient
+
+# Create once at import — it caches the key set.
+jwks_client = PyJWKClient("https://api.grantiva.io/.well-known/jwks.json")
+
+# Per-organization. Decode a real token to read the exact values.
+ISSUER = "app-attest-acme"
+AUDIENCE = "Acme"
+
+
+def verify_device_token(token: str) -> dict:
+    signing_key = jwks_client.get_signing_key_from_jwt(token)
+    return jwt.decode(
+        token,
+        signing_key.key,
+        algorithms=["RS256"],
+        issuer=ISSUER,
+        audience=AUDIENCE,
+    )
+
+
+def risk_gate(payload: dict, high_stakes: bool = False) -> str:
+    score = payload.get("risk_score")  # absent on Free
+
+    if score is None:
+        # No signed score. Fall back to your own signals —
+        # "no score" is not the same as "low risk".
+        return "step-up" if high_stakes else "allow"
+
+    if payload.get("jailbreak_detected"):
+        return "deny"
+    if score > 75:
+        return "deny"
+    if score > 20:
+        return "step-up" if high_stakes else "allow"
+
+    # score <= 20. The score was captured when the token was minted.
+    if high_stakes and (int(time.time()) - payload["iat"]) > 300:
+        return "step-up"
+
+    return "allow"
+
+
+# FastAPI dependency
+from fastapi import Header, HTTPException
+
+
+async def attested_device(authorization: str = Header(default="")) -> dict:
+    token = authorization.removeprefix("Bearer ").strip()
+    if not token:
+        raise HTTPException(status_code=401, detail="missing device token")
+    try:
+        payload = verify_device_token(token)
+    except jwt.PyJWTError:
+        raise HTTPException(status_code=401, detail="invalid or expired device token")
+
+    if risk_gate(payload) == "deny":
+        raise HTTPException(status_code=403, detail="device blocked")
+
+    return payload
+```
+
+<Note>
+Both examples verify `iss` and `aud` and pin `algorithms` to `RS256`. Never call a decode function without an algorithm allowlist — an attacker-supplied `alg: none` or HMAC-with-the-public-key token would otherwise verify.
+</Note>
+
+## Claims you should not build on
+
+These are present in some tokens but carry no dependable signal today. They are documented here so you do not discover that the hard way.
+
+| Claim | Why |
+|---|---|
+| `app_store_receipt` | Set to `true` when a device profile is created and never updated. It is constant `true` and does not indicate a validated App Store receipt. |
+| `network_type` | Enterprise only. Derived from request headers, not from the device. It never reports `"cellular"` or `"wifi"` — in practice it is `"unknown"`, or `"proxy"` when the forwarding chain is long. |
+| `country` | Enterprise only. Populated from `CF-IPCountry` / `CloudFront-Viewer-Country` at the edge, so it is an IP-geolocation guess, and it is **always absent on the `/refresh` path**. |
+| `device_id` | Populated inconsistently between `/validate` and `/refresh`. Use `sub`. |
+
+## Related
+
+- [Device Attestation](/concepts/attestation) — how the token is issued
+- [Risk Scoring](/concepts/risk-scoring) — what moves `risk_score` and what the ranges mean
+- [Custom Claims](/concepts/custom-claims) — adding your own data to `custom_claims`
+- [Backend JWT Verification](/backend-verification) — more languages (Go, Swift/Vapor)
+- [JWKS endpoint](/api-reference/attestation/jwks) — public key format
