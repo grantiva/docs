@@ -1,29 +1,108 @@
 ---
 title: "Team Management"
-description: "Invite team members and manage roles"
+description: "Invite teammates, assign roles, and manage seats"
 ---
 
-## Invite members
-
-From **Team** in the dashboard, invite new members by email. They'll receive an invitation to join your account.
+Grantiva accounts are organizations. Every person with access holds a membership in the organization, and that membership carries a role that decides what they can do.
 
 ## Roles
 
-| Role | Manage members | Manage settings | Manage API keys | Write projects | Delete account |
+There are four roles, ordered `viewer` < `member` < `admin` < `owner`. Permissions are cumulative — each role can do everything the one below it can.
+
+| Role | Manage members | Manage settings | Manage API keys | Write projects | Delete organization |
 |------|:-:|:-:|:-:|:-:|:-:|
 | **Owner** | Yes | Yes | Yes | Yes | Yes |
 | **Admin** | Yes | Yes | Yes | Yes | No |
 | **Member** | No | No | No | Yes | No |
 | **Viewer** | No | No | No | No | No |
 
+- **Manage members** — invite, remove, and change roles
+- **Manage settings** — rename the organization, change the billing email, edit notification preferences
+- **Manage API keys** — create, rotate, and revoke [organization API keys](/api-reference/org/api-keys)
+- **Write projects** — register apps, edit feature flags, custom claims, and webhooks
+- **Delete organization** — owner only, and only once every other member has been removed
+
+Viewers can still read everything: the member list, pending invites, API key metadata, and analytics.
+
+## Seats
+
+Every member and every **pending invite** consumes a seat. The limit comes from your plan:
+
+| Plan | Seats |
+|------|------:|
+| Free | 1 |
+| Pro | 3 |
+| Business | 10 |
+| Enterprise | 50 |
+
+An invite that would push members plus pending invites past the limit is rejected with a message naming your current counts. Remove a member to free a seat, or [upgrade your plan](/dashboard/billing).
+
+<Note>
+A pending invite keeps holding its seat until it is accepted. There is currently no way to cancel one, so on a small plan invite deliberately.
+</Note>
+
+## Invite a teammate
+
+Admins and owners can invite. From **Team** in the dashboard, enter the teammate's email address and pick the role they should get — **Member** if you don't choose.
+
+The invite is rejected if:
+
+- the email already belongs to a member of the organization
+- a pending invite already exists for that email
+- the organization is out of seats
+
+Otherwise Grantiva emails the address a one-click acceptance link and the invite appears in the pending list.
+
+### The invite flow
+
+<Steps>
+  <Step title="Invite sent">
+    The invite is created with a random single-use token and a **7-day expiry**, and an email goes to the invitee with an accept link.
+  </Step>
+  <Step title="Invitee signs in">
+    They open the link and sign in to Grantiva — creating an account first if they don't have one. The account's email must match the address the invite was sent to; an invite accepted from a different email is refused.
+  </Step>
+  <Step title="Membership created">
+    Accepting adds them to the organization with the role the invite carried and marks the invite accepted. Accepting twice is harmless — an existing membership is left as it is.
+  </Step>
+  <Step title="Inviter notified">
+    If the organization's `teamInvite` [notification preference](/api-reference/org/settings) is on, the person who sent the invite gets an email confirming it was accepted.
+  </Step>
+</Steps>
+
+An invite that sits unaccepted for 7 days expires and can no longer be used. It still counts against your seats, and a second invite to the same address is refused while the first is outstanding.
+
 ## Change a member's role
 
-Admins and owners can change roles from the team page. You cannot change your own role or promote someone above your own role level.
+Admins and owners can change roles from the members page. Two rules apply:
+
+- You cannot assign a role **higher than your own**. An admin can promote someone to admin, not to owner.
+- Only an owner can change another **owner's** role.
+
+Every change is recorded in the audit log as `member.role_changed`, with the old and new roles.
 
 ## Remove a member
 
-Admins and owners can remove members. The owner cannot be removed — ownership must be transferred first.
+Admins and owners can remove members, subject to two rules:
+
+- You cannot remove **yourself**. Someone holding a higher role has to do it.
+- You can only remove someone with a **strictly lower** role than yours. An admin cannot remove another admin, and an owner cannot be removed by anyone.
+
+Removal deletes the membership. The person's Grantiva account continues to exist; they simply lose access to this organization. Any API keys they created belong to the organization and keep working — [revoke them](/api-reference/org/api-keys) separately if that matters.
+
+<Note>
+An owner can never be removed directly, because removal requires the target to hold a strictly lower role and nothing outranks owner. To hand the organization over: promote the new person to owner, have them demote you to admin, then have them remove you.
+</Note>
 
 ## Audit log
 
-All member changes (invites, role changes, removals) are logged in the **Audit Log**. Filter by action type to review specific events.
+Team changes are written to the organization audit log with a `resource.verb` action name:
+
+| Action | Recorded when |
+|--------|---------------|
+| `invite.created` | An invite is sent — includes the email and role |
+| `invite.accepted` | An invitee joins the organization |
+| `member.role_changed` | A member's role changes — includes old and new role |
+| `member.removed` | A member is removed — includes their email |
+
+Read and filter the log from the dashboard, or through the [audit log API](/api-reference/org/settings).

@@ -27,7 +27,7 @@
             ]
           },
           {
-            "group": "iOS SDK",
+            "group": "SDKs",
             "pages": [
               "sdk/installation",
               "sdk/attestation",
@@ -35,7 +35,9 @@
               "sdk/user-identity",
               "sdk/feedback",
               "sdk/feature-flags",
-              "sdk/error-handling"
+              "sdk/error-handling",
+              "sdk/grantiva-ui",
+              "sdk/android"
             ]
           },
           {
@@ -44,6 +46,7 @@
               "cli/installation",
               "cli/configuration",
               "cli/commands",
+              "cli/mcp",
               "cli/ci-integration"
             ]
           },

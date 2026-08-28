@@ -1,0 +1,213 @@
+---
+title: "MCP Server"
+description: "Let an AI agent drive a real iOS simulator through the Model Context Protocol"
+---
+
+`grantiva mcp` starts a [Model Context Protocol](https://modelcontextprotocol.io) server that hands an AI agent direct control of an iOS simulator. The agent can build your app, boot a device, read the accessibility tree, tap, swipe, type, take screenshots, run your tests, and capture visual regression baselines — all as ordinary tool calls.
+
+The automation runs through **GrantivaAgent**, the WebDriverAgent embedded in the CLI. There is no Appium server to run, no Maestro install, and no Accessibility permission to grant. It works headless on CI the same way it works on your Mac.
+
+<Note>
+Every UI-mutating tool returns the updated accessibility tree in its response. The agent sees what changed after each tap without having to ask again — which is what makes an agent able to *recover* from a broken flow rather than just fail on it.
+</Note>
+
+## Start the server
+
+```bash
+grantiva mcp
+```
+
+The server speaks MCP over stdio, so you normally never run it by hand — your MCP client launches it for you.
+
+It reads `grantiva.yml` from the working directory when one is present, which is how the build and VRT tools learn your scheme, simulator, and bundle ID. Tools that take an explicit `scheme` or `simulator` argument work without a config file.
+
+### UI tools need a runner session
+
+The build, simulator, and context tools work on their own. The UI tools (`grantiva_tap`, `grantiva_swipe`, `grantiva_type`, `grantiva_a11y_tree`, `grantiva_a11y_check`, `grantiva_script`) talk to a live GrantivaAgent session. Start one before or during the agent's work:
+
+```bash
+grantiva runner start --detach
+```
+
+If no session is alive when the server starts, the UI tools fail gracefully rather than taking the server down with them — the rest keep working.
+
+## Register it with your agent
+
+### Claude Code
+
+```bash
+claude mcp add grantiva -- grantiva mcp
+```
+
+Or commit a project-scoped `.mcp.json` at your repo root so everyone on the team gets the same tools:
+
+```json
+{
+  "mcpServers": {
+    "grantiva": {
+      "command": "grantiva",
+      "args": ["mcp"]
+    }
+  }
+}
+```
+
+### Claude Desktop
+
+Add the same block to `claude_desktop_config.json`, but point `cwd` at the project so `grantiva.yml` resolves:
+
+```json
+{
+  "mcpServers": {
+    "grantiva": {
+      "command": "/usr/local/bin/grantiva",
+      "args": ["mcp"],
+      "cwd": "/Users/you/Developer/MyApp"
+    }
+  }
+}
+```
+
+<Warning>
+Claude Desktop does not inherit your shell `PATH`. Use the absolute path to the binary — `which grantiva` will tell you where Homebrew put it.
+</Warning>
+
+## Tools
+
+The server registers as `grantiva` and exposes 18 tools.
+
+### UI automation
+
+| Tool | Purpose | Parameters |
+|------|---------|-----------|
+| `grantiva_screenshot` | Screenshot the simulator. Returns a base64 PNG. | `format` — `base64` (default) or `file`. `file` writes `.grantiva/mcp-screenshot.png` |
+| `grantiva_tap` | Tap an element by accessibility label, or at a coordinate. Returns the updated tree. | `label`, or both `x` and `y` |
+| `grantiva_swipe` | Swipe the screen. Returns the updated tree. | `direction` (required) — `up`, `down`, `left`, `right` |
+| `grantiva_type` | Type into the focused field. Returns the updated tree. | `text` (required) |
+| `grantiva_a11y_tree` | Read the current accessibility tree as JSON — labels, types, frames, states. | none |
+| `grantiva_a11y_check` | Audit the current screen for missing labels on interactive elements and tap targets under 44pt. | none |
+
+`grantiva_a11y_tree` and `grantiva_a11y_check` are the two that change what an agent can do. Every other UI automation tool is a way to *act*; these are the way to *see*. The tree is the same accessibility hierarchy VoiceOver walks — labels, types, frames, enabled states — so an agent that gets an unexpected screen can read what is actually in front of it and pick a different element, instead of retrying a label that was never there.
+
+`grantiva_a11y_check` walks that same tree and reports violations:
+
+| Rule | Flags |
+|------|-------|
+| `missing_label` | An enabled interactive element (button, text field, switch, slider, stepper, link, segmented control) with no accessibility label or name |
+| `small_tap_target` | An interactive element whose frame is under 44pt in either dimension, reported with its measured size |
+
+Both rules run by default; override the set with `a11y.rules` in `grantiva.yml`. A clean screen returns "No accessibility violations found", so an agent can gate a change on it.
+
+### Build and test
+
+| Tool | Purpose | Parameters |
+|------|---------|-----------|
+| `grantiva_build` | Build via `xcodebuild`. Returns success, duration, warning and error counts. | `scheme` (falls back to `grantiva.yml`), `simulator` (default `iPhone 16`) |
+| `grantiva_run` | Build, install, and launch the app on the simulator. | `scheme`, `simulator` |
+| `grantiva_test` | Run the test suite via `xcodebuild test`. Returns pass/fail counts. | `scheme`, `simulator` |
+
+`grantiva_run` needs `bundle_id` in `grantiva.yml` — it cannot launch the app without one.
+
+### Simulators
+
+| Tool | Purpose | Parameters |
+|------|---------|-----------|
+| `grantiva_sim_list` | List available simulators with name, UDID, state, and runtime. | `filter` — `all` (default), `booted`, `shutdown` |
+| `grantiva_sim_boot` | Boot a simulator by name or UDID. | `name` (default `iPhone 16`) |
+| `grantiva_sim_ensure` | Create or idempotently reuse an exact named simulator. | `name`, `device_type`, `runtime` (all required); `boot` |
+| `grantiva_sim_delete` | Delete one simulator by exact name or UDID. | `name` (required) |
+
+`runtime` accepts a runtime name, a version, an identifier, or `latest`.
+
+### Scripting
+
+| Tool | Purpose | Parameters |
+|------|---------|-----------|
+| `grantiva_script` | Run a batch of UI actions in sequence and return the final accessibility tree. | `steps` (required) — array of step objects |
+
+Each step object carries exactly one action key: `tap` (label), `tap_xy` (`{x, y}`), `swipe` (direction), `type` (text), or `wait` (seconds). Batching a whole flow into one call is much cheaper than a round trip per tap.
+
+```json
+{
+  "steps": [
+    { "tap": "Sign In" },
+    { "type": "user@example.com" },
+    { "tap": "Continue" },
+    { "wait": 1.5 },
+    { "swipe": "up" }
+  ]
+}
+```
+
+### Context
+
+| Tool | Purpose | Parameters |
+|------|---------|-----------|
+| `grantiva_context` | Report the loaded `grantiva.yml`, the booted simulator, the Xcode version, and the runner session status. | none |
+
+This is the tool to call first. It tells the agent what it is working with before it starts guessing.
+
+### Visual regression
+
+| Tool | Purpose | Parameters |
+|------|---------|-----------|
+| `grantiva_vrt_capture` | Capture screenshots for every configured screen. Assumes the app is already running. | `screens` — reserved; all configured screens are captured today |
+| `grantiva_vrt_compare` | Diff current captures against baselines. Returns pixel and perceptual metrics per screen. | none |
+| `grantiva_vrt_approve` | Promote captures to baselines. | `screens` — approves all if omitted |
+
+These shell out to the `grantiva diff` subcommands, so they use the same `.grantiva/baselines/` directory and the same thresholds as a local run. See [Visual regression testing](/concepts/vrt).
+
+### Errors
+
+Tool failures are not uniform, so an agent should handle both shapes. The UI and script tools return a normal result with `isError: true` and a human-readable message — a missing `direction`, a tap with neither a label nor coordinates. `grantiva_build`, `grantiva_run`, and `grantiva_test` do the same for a failed build, with the compiler errors in the text. `grantiva_sim_ensure` and `grantiva_sim_delete` throw instead, surfacing as protocol-level errors.
+
+## Resources
+
+Two resources are published alongside the tools:
+
+| URI | MIME type | Contents |
+|-----|-----------|----------|
+| `grantiva://hierarchy` | `application/json` | Current view hierarchy as a JSON tree |
+| `grantiva://screenshot` | `image/png` | Current screen as a PNG |
+
+Both support subscriptions. After `grantiva_tap`, `grantiva_swipe`, `grantiva_type`, or `grantiva_script`, the server emits a resource-updated notification for `grantiva://hierarchy`, so a subscribed client refreshes its picture of the screen automatically.
+
+## Worked example
+
+A typical agent session — build the app, get it onto a device, walk a flow, and lock in a baseline.
+
+<Steps>
+  <Step title="Orient">
+    The agent calls `grantiva_context` and learns the scheme is `MyApp`, the bundle ID is `com.example.myapp`, no simulator is booted, and there is no runner session.
+  </Step>
+  <Step title="Provision a simulator">
+    `grantiva_sim_ensure` with `name: "Agent iPhone"`, `device_type: "iPhone 17 Pro"`, `runtime: "latest"`, `boot: true`. Idempotent — a rerun reuses the same device instead of piling up new ones.
+  </Step>
+  <Step title="Build and launch">
+    `grantiva_run` with `simulator: "Agent iPhone"`. The app builds, installs, and launches. A build failure comes back as an error result with the compiler errors inline, so the agent can fix the code and call it again.
+  </Step>
+  <Step title="Walk the flow">
+    `grantiva_script` with the onboarding steps:
+
+    ```json
+    {
+      "steps": [
+        { "tap": "Get Started" },
+        { "type": "user@example.com" },
+        { "tap": "Continue" },
+        { "wait": 2 }
+      ]
+    }
+    ```
+
+    The response ends with the final accessibility tree. If "Continue" was never reachable, the agent sees the actual labels on screen and adjusts rather than failing blind.
+  </Step>
+  <Step title="Check accessibility">
+    `grantiva_a11y_check` on the landed screen reports any unlabeled buttons or tap targets below 44×44pt.
+  </Step>
+  <Step title="Capture and approve a baseline">
+    `grantiva_vrt_capture` screenshots every screen in `grantiva.yml`. `grantiva_vrt_compare` diffs them against the stored baselines. When the change is intentional, `grantiva_vrt_approve` promotes the captures — and the next CI run diffs against them.
+  </Step>
+</Steps>
+
+For a fully scripted, non-agent version of the same pipeline, see [`grantiva ci run`](/cli/commands) and [CI integration](/cli/ci-integration).

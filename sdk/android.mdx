@@ -1,0 +1,153 @@
+---
+title: "Android SDK"
+description: "Device attestation for Android via Google Play Integrity"
+---
+
+The Android SDK is the counterpart to the iOS SDK's App Attest flow. Your app proves it is genuine and unmodified through [Google Play Integrity](https://developer.android.com/google/play/integrity), Grantiva verifies that proof, and your backend receives the same attestation JWT it already knows how to check.
+
+No API key is embedded in your release app — the Play Integrity verdict is the authentication.
+
+## Scope: attestation only
+
+<Warning>
+The Android SDK ships **attestation only**. It does not yet include feature flags, feedback and support tickets, push token registration, or user identity. Do not plan an Android release around those.
+</Warning>
+
+| Capability | iOS (2.1.0) | Android |
+|------------|:-----------:|:-------:|
+| Attestation → JWT | Yes | Yes |
+| Device intelligence / risk score | Yes | Yes |
+| Feature flags | Yes | No |
+| Feedback + support tickets | Yes | No |
+| Push token registration | Yes | No |
+| User identity (`identify`) | Yes | No |
+
+## Requirements
+
+- **minSdk 23** — `EncryptedSharedPreferences` requires API 23+
+- compileSdk 34, JDK 17
+- Google Play Services on the device for a real Play Integrity verdict
+
+## Install
+
+```kotlin
+dependencies {
+    implementation("io.grantiva:android-sdk:<version>")
+}
+```
+
+## Initialize
+
+Register your Android package name in the dashboard first — it identifies your tenant the same way Bundle ID + Team ID does on iOS.
+
+```kotlin
+// Once, in Application.onCreate or your DI graph
+val grantiva = Grantiva(context)
+```
+
+The SDK holds the application context internally, so passing an `Activity` is safe.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `context` | `Context` | — | Application or activity context |
+| `packageName` | `String` | `context.packageName` | Must match the package name registered with Grantiva |
+| `apiBaseUrl` | `String` | `Grantiva.DEFAULT_API_BASE_URL` | API base URL |
+| `apiKey` | `String?` | `null` | Emulator/CI fallback — see below |
+| `debug` | `Boolean` | `false` | Verbose OkHttp logging. Never enable in a release build — it logs token values. |
+
+The constructor is annotated `@JvmOverloads`, so Java callers get the same defaults.
+
+Point at the development environment during integration testing:
+
+```kotlin
+val grantiva = Grantiva(context, apiBaseUrl = Grantiva.DEV_API_BASE_URL)
+```
+
+## Attest
+
+### Coroutines
+
+```kotlin
+val result = grantiva.attest()
+myApiClient.setToken(result.token)
+```
+
+`attest()` is a suspending function and dispatches its I/O internally, so it is safe to call from any coroutine context. It throws `GrantivaError` on failure.
+
+### Callback overload
+
+For Java and React Native interop, where suspending functions are inconvenient:
+
+```java
+grantiva.attest(result -> {
+    if (result.isSuccess()) {
+        String token = result.getOrThrow().getToken();
+    } else {
+        result.exceptionOrNull().printStackTrace();
+    }
+    return Unit.INSTANCE;
+});
+```
+
+The callback is invoked on a background thread.
+
+### AttestationResult
+
+```kotlin
+result.token                // JWT — send as Authorization: Bearer <token>
+result.expiresAt            // ISO-8601 expiry timestamp
+result.deviceIntelligence   // DeviceIntelligence
+```
+
+`DeviceIntelligence` carries:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `deviceId` | `String` | Pseudo-anonymous identifier for this installation |
+| `riskScore` | `Int?` | 0–100. Null on Free tier, present on Pro and above |
+| `riskCategory` | `String` | `trusted` (0–20), `suspicious` (21–75), `blocked` (76–100). All tiers. |
+| `isEmulator` | `Boolean` | True when the Play Integrity verdict indicates a virtual device |
+| `attestationCount` | `Int` | Times this device has attested |
+| `lastAttestationDate` | `String?` | ISO-8601 date of the previous attestation, null on first attestation |
+
+The score derives from the Play Integrity verdict: `STRONG` → 5, `DEVICE` → 15, `BASIC` or emulator → 57–60, no verdict → 80. See [risk scoring](/concepts/risk-scoring).
+
+## Other members
+
+| Member | Notes |
+|--------|-------|
+| `fun getCurrentToken(): String?` | Cached JWT, or null. Does not trigger attestation. |
+| `fun isTokenValid(): Boolean` | Whether a non-expired token is stored locally |
+| `fun clearStoredData()` | Clears the device ID, JWT, and expiry |
+
+Errors are a sealed `GrantivaError`: `AttestationNotAvailable`, `NetworkError`, `ServerError`, `InvalidConfiguration`, `TokenExpired`, `VerificationFailed`.
+
+## Token caching
+
+Tokens are stored in [`EncryptedSharedPreferences`](https://developer.android.com/reference/androidx/security/crypto/EncryptedSharedPreferences) and reused until 60 seconds before expiry. Call `attest()` whenever you need a token — it returns the cached copy when one is still valid and only runs a full Play Integrity flow when it has to. There is no need to cache the token yourself.
+
+## Emulators and CI
+
+Play Integrity needs real Google Play Services, so it cannot succeed on a bare emulator. Pass an API key to fall back to key auth — the same escape hatch the iOS SDK uses for the Simulator:
+
+```kotlin
+val grantiva = Grantiva(context, apiKey = BuildConfig.GRANTIVA_DEV_API_KEY)
+```
+
+The backend treats these requests as unattested and returns a lower-trust token with a risk score of 60.
+
+<Warning>
+Never ship an API key in a release build. Key mode skips Play Integrity entirely — anything holding the key can obtain a token.
+</Warning>
+
+## The device ID is not hardware-bound
+
+This is the one place Android differs materially from iOS, and it affects billing.
+
+On iOS the device identity derives from a Secure Enclave key, so it survives app reinstalls. On Android the device ID is a **UUID stored in `EncryptedSharedPreferences`**. It is not hardware-bound, so:
+
+- A fresh install produces a **new** device ID
+- The new ID counts as a new device against your [Monthly Active Devices](/dashboard/billing) quota
+- `clearStoredData()` has the same effect — use it only for sign-out or testing
+
+The JWT's `deviceId` claim reflects this, so your backend can account for it rather than assuming an ID is stable across installs.
