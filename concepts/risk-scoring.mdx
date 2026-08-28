@@ -11,7 +11,7 @@ Every attestation returns a **risk category** — but the full numeric score dep
 | Pro / Business / Enterprise | Full 0–100 numeric risk score + category |
 
 <Callout type="info">
-On the Free plan, `risk_score` is `null` in the attestation JWT. Use `risk_category` to make access decisions. See [Backend Verification](/backend-verification) for details.
+On the Free plan the JWT carries **no** `risk_score` claim at all — the key is omitted, not set to `null`. The category is still returned in the attestation **response body** as `deviceIntelligence.riskCategory`, but that value is not signed. There is no `risk_category` claim in the JWT on any plan. See [JWT Claims](/concepts/jwt-claims) for the full per-plan claim table.
 </Callout>
 
 ## Score ranges
@@ -44,31 +44,29 @@ Scores are dynamic in both directions: they rise on suspicious signals and fall 
 
 ### By category (all plans)
 
-Every plan returns a `risk_category` in the attestation JWT. Use the numeric score ranges to branch in Swift:
+`riskCategory` is returned on every plan in the attestation response. It is an enum on the SDK side:
 
 ```swift
 let result = try await grantiva.validateAttestation()
-// Trusted: 0–20 | Suspicious: 21–75 | Blocked: 76–100
-let score = result.deviceIntelligence.riskScore
 
-if score <= 20 {
-    proceedNormally()
-} else if score <= 75 {
-    requestAdditionalAuth()
-} else {
-    blockAccess()
+switch result.deviceIntelligence.riskCategory {
+case .trusted:    proceedNormally()      // 0–20
+case .suspicious: requestAdditionalAuth() // 21–75
+case .blocked:    blockAccess()           // 76–100
 }
 ```
 
-<Info>The `risk_category` string is also available directly from the decoded JWT on your backend. See [Backend JWT Verification](/backend-verification).</Info>
-
 ### By numeric score (Pro / Business / Enterprise)
 
-If your plan includes the numeric score, you can use finer-grained thresholds:
+`riskScore` is `Int?` — it is `nil` on the Free plan, so unwrap it:
 
 ```swift
 let result = try await grantiva.validateAttestation()
-let score = result.deviceIntelligence.riskScore
+
+guard let score = result.deviceIntelligence.riskScore else {
+    // Free plan — no numeric score. Fall back to the category.
+    return handle(category: result.deviceIntelligence.riskCategory)
+}
 
 switch score {
 case 0...20:
@@ -82,22 +80,21 @@ default:
 }
 ```
 
-<Info>On the Free plan, `riskScore` is `0` and `risk_score` is `null` in the JWT. Use `risk_category` from the decoded JWT to make tier-safe access decisions on Free.</Info>
-
 ### On your backend
 
-Decode the JWT to read risk data:
+Your backend reads the **signed JWT**, not the response body. The claims are flat and `snake_case`, and there is no `risk_category` claim — derive it from `risk_score`:
 
 ```json
 {
-  "device_intelligence": {
-    "risk_score": 15,
-    "risk_category": "trusted",
-    "jailbreak_detected": false,
-    "device_integrity": "valid"
-  }
+  "sub": "SGVsbG8sIHdvcmxkIQ-keyId",
+  "risk_score": 15,
+  "device_integrity": "high",
+  "jailbreak_detected": false,
+  "attestation_count": 47
 }
 ```
+
+`risk_score` is a **snapshot from when the token was issued** and tokens live for an hour by default. See [JWT Claims](/concepts/jwt-claims) for the full claim reference, the staleness caveat, and Node/Python verification code.
 
 ## Webhooks
 

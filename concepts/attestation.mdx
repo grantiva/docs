@@ -55,13 +55,15 @@ Server-to-server API keys (visible in the dashboard) are for backend operations 
 
 ## What the JWT contains
 
-The attestation JWT includes:
+On paid plans the attestation JWT is signed device intelligence, not just a proof of attestation:
+
 - Device integrity status
 - Risk score (0–100)
 - Jailbreak detection
-- Device model and OS version
-- Attestation count and history
+- Attestation count and history (`first_seen`, `attestation_count`)
 - Your [custom claims](/concepts/custom-claims) if configured
+
+Exactly which claims are present depends on your plan — the Free plan token carries no device intelligence, and device model / OS version are Enterprise-only *in the token*. See [JWT Claims](/concepts/jwt-claims) for the full per-plan claim table, a decoded example, and server-side verification code.
 
 ## Simulator development
 

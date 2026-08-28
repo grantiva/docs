@@ -10,21 +10,31 @@ After your iOS app calls `grantiva.validateAttestation()`, it receives a signed 
 1. Your app sends the JWT as a `Bearer` token in the `Authorization` header
 2. Your backend fetches Grantiva's public key from `/.well-known/jwks.json`
 3. You verify the JWT signature and expiry locally (no network call per request)
-4. You extract device claims: `risk_score`, `risk_category`, jailbreak status, and any custom claims
+4. You extract device claims: `risk_score`, jailbreak status, and any custom claims
 
 ## JWT Claims Reference
 
+The claims below are the ones most integrations use. [JWT Claims](/concepts/jwt-claims) is the complete reference, including which claims each plan includes and a decoded example token.
+
 | Claim | Type | Description |
 |-------|------|-------------|
-| `device_id` | string | Unique device identifier |
-| `risk_score` | integer\|null | 0–100 device risk score. `null` on Free tier |
-| `risk_category` | string | `"trusted"` (0–20), `"suspicious"` (21–75), or `"blocked"` (76–100) |
-| `device_integrity` | string | Integrity status string from Apple's attestation |
-| `jailbreak_detected` | boolean | Whether jailbreak indicators were found |
-| `attestation_count` | integer | Total attestations from this device |
+| `sub` | string | App Attest key id — the stable per-device identifier. Present on every plan |
+| `risk_score` | integer | 0–100 device risk score. **Omitted entirely** (not `null`) on the Free plan |
+| `device_integrity` | string | `"high"`, `"medium"`, `"low"`, or `"unknown"`. Paid plans |
+| `jailbreak_detected` | boolean | Whether jailbreak or development-build indicators were found. Paid plans |
+| `attestation_count` | integer | Total attestations from this device. Paid plans |
+| `bundle_id` / `team_id` | string | The identifiers the attestation was bound to |
 | `custom_claims` | object | Your custom JWT claims configured in the dashboard |
-| `exp` | integer | Standard JWT expiry (Unix timestamp) |
-| `iss` | string | `"grantiva"` |
+| `exp` / `iat` | integer | Standard JWT expiry and issued-at (Unix timestamps) |
+| `iss` / `aud` | string | **Your organization's** issuer and audience. Decode a real token to read the exact values |
+
+<Warning>
+There is **no `risk_category` claim in the JWT** — that field exists only in the attestation HTTP response body. Derive the category from `risk_score`.
+
+`iss` is not the literal string `"grantiva"`. It defaults to `app-attest-<your-org-name>` and is configurable per organization. Pin your own value.
+
+`risk_score` is captured when the token is minted and tokens live for 1 hour by default — treat it as advisory and re-attest before high-stakes actions. See [JWT Claims](/concepts/jwt-claims).
+</Warning>
 
 ## Node.js
 
@@ -41,20 +51,24 @@ const JWKS = createRemoteJWKSet(
   new URL('https://api.grantiva.io/.well-known/jwks.json')
 )
 
+// Per-organization. Decode a real token to read the exact values.
+const ISSUER = 'app-attest-acme'
+const AUDIENCE = 'Acme'
+
 async function verifyGrantivaToken(token) {
   const { payload } = await jwtVerify(token, JWKS, {
-    issuer: 'grantiva',
     algorithms: ['RS256'],
+    issuer: ISSUER,
+    audience: AUDIENCE,
   })
 
-  const riskScore    = payload.risk_score       // number | null
-  const riskCategory = payload.risk_category    // "trusted" | "suspicious" | "blocked"
-  const jailbreak    = payload.jailbreak_detected // boolean
-  const customClaims = payload.custom_claims    // object | undefined
+  const riskScore    = payload.risk_score         // number | undefined (absent on Free)
+  const jailbreak    = payload.jailbreak_detected // boolean | undefined
+  const customClaims = payload.custom_claims      // object | undefined
 
-  // Block high-risk devices
-  if (riskCategory === 'blocked') {
-    throw new Error('Device blocked due to high risk score')
+  // Block high-risk devices. Absent score => no signed signal, not "safe".
+  if (jailbreak || (riskScore !== undefined && riskScore > 75)) {
+    throw new Error('Device blocked due to high risk')
   }
 
   return payload
@@ -89,6 +103,10 @@ from jwt import PyJWKClient
 
 JWKS_URL = "https://api.grantiva.io/.well-known/jwks.json"
 
+# Per-organization. Decode a real token to read the exact values.
+ISSUER = "app-attest-acme"
+AUDIENCE = "Acme"
+
 # Reuse the client across requests — it caches the public key
 jwks_client = PyJWKClient(JWKS_URL)
 
@@ -99,16 +117,16 @@ def verify_grantiva_token(token: str) -> dict:
         token,
         signing_key.key,
         algorithms=["RS256"],
-        issuer="grantiva",
+        issuer=ISSUER,
+        audience=AUDIENCE,
     )
 
-    risk_score    = payload.get("risk_score")       # int | None
-    risk_category = payload.get("risk_category")    # "trusted" | "suspicious" | "blocked"
+    risk_score    = payload.get("risk_score")   # int | None (absent on Free)
     jailbreak     = payload.get("jailbreak_detected", False)
     custom_claims = payload.get("custom_claims", {})
 
-    # Block high-risk devices
-    if risk_category == "blocked":
+    # Block high-risk devices. Absent score => no signed signal, not "safe".
+    if jailbreak or (risk_score is not None and risk_score > 75):
         raise ValueError(f"Device blocked: risk_score={risk_score}")
 
     return payload
@@ -159,33 +177,40 @@ struct GrantivaPayload: JWTPayload {
         case subject        = "sub"
         case expiration     = "exp"
         case issuer         = "iss"
-        case deviceId       = "device_id"
+        case audience       = "aud"
         case riskScore      = "risk_score"
-        case riskCategory   = "risk_category"
         case jailbreak      = "jailbreak_detected"
+        case deviceIntegrity = "device_integrity"
         case bundleId       = "bundle_id"
         case teamId         = "team_id"
-        case customClaims   = "custom_claims"
     }
 
-    let subject: SubjectClaim
+    /// Per-organization. Decode a real token to read the exact values.
+    static let expectedIssuer = "app-attest-acme"
+    static let expectedAudience = "Acme"
+
+    let subject: SubjectClaim       // App Attest key id — the device identifier
     let expiration: ExpirationClaim
     let issuer: IssuerClaim
-    let deviceId: String
-    let riskScore: Int?          // nil on Free tier
-    let riskCategory: String     // "trusted" | "suspicious" | "blocked"
-    let jailbreak: Bool
+    let audience: AudienceClaim
+    let riskScore: Int?             // absent on the Free plan
+    let jailbreak: Bool?            // absent on the Free plan
+    let deviceIntegrity: String?    // absent on the Free plan
     let bundleId: String
     let teamId: String
-    let customClaims: [String: String]?
 
     func verify(using algorithm: some JWTAlgorithm) async throws {
         try expiration.verifyNotExpired()
-        guard issuer.value == "grantiva" else {
+        guard issuer.value == Self.expectedIssuer else {
             throw JWTError.claimVerificationFailure(failedClaim: issuer, reason: "unexpected issuer")
         }
+        try audience.verifyIntendedAudience(includes: Self.expectedAudience)
     }
 }
+
+// `custom_claims` holds arbitrary JSON. Add it as a property typed with your own
+// Codable struct rather than [String: String] — nested objects such as
+// `subscription` will not decode into a string map.
 
 // Middleware — verify token on every authenticated request
 struct GrantivaDeviceMiddleware: AsyncMiddleware {
@@ -196,7 +221,8 @@ struct GrantivaDeviceMiddleware: AsyncMiddleware {
 
         let payload = try await request.jwt.verify(token, as: GrantivaPayload.self)
 
-        if payload.riskCategory == "blocked" {
+        // Absent score => no signed signal, not "safe".
+        if payload.jailbreak == true || (payload.riskScore ?? 0) > 75 {
             throw Abort(.forbidden, reason: "Device blocked (risk score: \(payload.riskScore ?? -1))")
         }
 
@@ -212,7 +238,7 @@ private struct GrantivaPayloadKey: StorageKey {
 // Usage in routes
 app.grouped(GrantivaDeviceMiddleware()).get("protected") { req async throws -> String in
     let device = req.storage[GrantivaPayloadKey.self]!
-    return "Hello attested device \(device.deviceId)"
+    return "Hello attested device \(device.subject.value)"
 }
 ```
 
@@ -241,15 +267,21 @@ import (
 
 const jwksURL = "https://api.grantiva.io/.well-known/jwks.json"
 
+// Issuer and audience are per-organization. Decode a real token to read them.
+const (
+    issuer   = "app-attest-acme"
+    audience = "Acme"
+)
+
 type GrantivaClaims struct {
-    DeviceID          string         `json:"device_id"`
-    RiskScore         *int           `json:"risk_score"`        // nil on Free tier
-    RiskCategory      string         `json:"risk_category"`
+    RiskScore         *int           `json:"risk_score"`        // nil when absent (Free plan)
     DeviceIntegrity   string         `json:"device_integrity"`
     JailbreakDetected bool           `json:"jailbreak_detected"`
     AttestationCount  int            `json:"attestation_count"`
+    BundleID          string         `json:"bundle_id"`
+    TeamID            string         `json:"team_id"`
     CustomClaims      map[string]any `json:"custom_claims"`
-    jwt.RegisteredClaims
+    jwt.RegisteredClaims // Subject holds the App Attest key id
 }
 
 // Initialize once at startup; keyfunc handles key rotation automatically
@@ -268,16 +300,17 @@ func VerifyGrantivaToken(tokenStr string) (*GrantivaClaims, error) {
 
     token, err := jwt.ParseWithClaims(tokenStr, claims, jwks.Keyfunc,
         jwt.WithIssuedAt(),
-        jwt.WithIssuer("grantiva"),
+        jwt.WithIssuer(issuer),
+        jwt.WithAudience(audience),
         jwt.WithValidMethods([]string{"RS256"}),
     )
     if err != nil || !token.Valid {
         return nil, fmt.Errorf("invalid token: %w", err)
     }
 
-    // Block high-risk devices
-    if claims.RiskCategory == "blocked" {
-        return nil, errors.New("device blocked due to high risk score")
+    // Block high-risk devices. A nil score means no signed signal, not "safe".
+    if claims.JailbreakDetected || (claims.RiskScore != nil && *claims.RiskScore > 75) {
+        return nil, errors.New("device blocked due to high risk")
     }
 
     return claims, nil
@@ -350,18 +383,24 @@ Gate on the single `is_active` boolean — it already accounts for billing-retry
 
 ## Risk-based access control
 
+Derive the category from `risk_score` — there is no `risk_category` claim in the JWT.
+
 ```javascript
-// Allow, warn, or block based on risk category
-switch (payload.risk_category) {
-  case 'trusted':     // riskScore 0–20
-    break             // full access
-  case 'suspicious':  // riskScore 21–75
-    logSuspiciousDevice(payload.device_id)
-    break             // allow but log
-  case 'blocked':     // riskScore 76–100
-    return res.status(403).json({ error: 'Device blocked' })
+const score = payload.risk_score
+
+if (score === undefined) {
+  // Free plan, or a plan without risk scoring in the token.
+  // No signed risk signal — fall back to your own controls.
+} else if (score <= 20) {
+  // trusted — full access
+} else if (score <= 75) {
+  logSuspiciousDevice(payload.sub)   // allow but log
+} else {
+  return res.status(403).json({ error: 'Device blocked' })
 }
 ```
+
+Remember the score was captured when the token was minted, up to an hour ago. Require a fresh attestation before payments, transfers, or credential changes. See [JWT Claims](/concepts/jwt-claims).
 
 ## Caching the public key
 

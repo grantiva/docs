@@ -55,6 +55,7 @@
             "pages": [
               "concepts/attestation",
               "concepts/risk-scoring",
+              "concepts/jwt-claims",
               "concepts/custom-claims",
               "concepts/subscription-claims",
               "concepts/webhooks",
