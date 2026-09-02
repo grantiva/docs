@@ -17,7 +17,7 @@ Custom claims let you embed additional data in the JWT returned by attestation. 
 Data types are `string`, `number`, `boolean`, `array`, `object`, and `date`.
 
 <Note>
-The Free plan allows **static claims only**. Creating a conditional, dynamic, or external claim on Free returns a 403.
+Custom claims start on the **Pro** plan. Creating a claim on Free returns a 403; the managed `subscription` claim is still injected on every plan.
 </Note>
 
 <Note>
@@ -28,7 +28,7 @@ The Free plan allows **static claims only**. Creating a conditional, dynamic, or
 
 | Plan | Max active claims | Types allowed |
 |------|------------------:|---------------|
-| Free | 1 | Static |
+| Free | 0 | — |
 | Pro | 5 | Static, conditional, dynamic |
 | Business | 10 | Static, conditional, dynamic |
 | Enterprise | 20 | Static, conditional, dynamic, external |
