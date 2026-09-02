@@ -94,7 +94,7 @@ Availability by plan. **✓** present · **◐** conditional, see the note for t
 |---|---|:--:|:--:|:--:|:--:|
 | `custom_claims` | object | ✓ (max 1, static) | ✓ (max 5) | ✓ (max 10) | ✓ (max 20) |
 
-Your configured claims are nested under `custom_claims`, preserving their JSON types. Grantiva's managed `subscription` object also lives here, on **every** plan — it is injected independently of your custom-claims configuration, so a Free-plan token can carry `custom_claims.subscription` even though Free allows only one custom claim of its own. See [Custom Claims](/concepts/custom-claims) and [Subscription Claims](/concepts/subscription-claims).
+Your configured claims are nested under `custom_claims`, preserving their JSON types. Grantiva's managed `subscription` object also lives here, on **every** plan — it is injected independently of your custom-claims configuration, so a Free-plan token can carry `custom_claims.subscription` even though Free has no custom claims of its own. See [Custom Claims](/concepts/custom-claims) and [Subscription Claims](/concepts/subscription-claims).
 
 The key is omitted entirely on Free when nothing evaluates to a value, and is an empty object `{}` on paid plans in the same situation.
 
