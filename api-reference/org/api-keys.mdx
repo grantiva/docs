@@ -3,11 +3,22 @@ title: "API Keys"
 description: "Create, rotate, and revoke server-side API keys for your organization"
 ---
 
-<Info>Server API keys are available on **Pro** and above. The number of active keys is limited by tier: Pro allows 1, Business allows 5, Enterprise allows 20. The Free tier cannot create API keys.</Info>
+<Info>Server API keys are available on **Pro** and above. The number of *active* keys is limited by tier: Pro allows 1, Business allows 5, Enterprise allows 20. The Free tier cannot create API keys.</Info>
 
 ## Authentication
 
-All API key management endpoints require a dashboard session (cookie-based). Any organization member can list keys; creating, rotating, and revoking keys requires **Admin** role or above.
+These endpoints accept either a dashboard session cookie or a server API key sent as `Authorization: Bearer <key>`.
+
+| Endpoint | Session role | Key scope |
+|----------|--------------|-----------|
+| `GET /api/v1/org/api-keys` | Any member | `keys:read` |
+| `POST /api/v1/org/api-keys` | Admin | `keys:write` |
+| `POST /api/v1/org/api-keys/:id/rotate` | Admin | `keys:write` |
+| `POST`/`DELETE` revoke | Admin | `keys:write` |
+
+Key-authenticated requests are authorized by scope, not by org role. A key may only mint keys with scopes it holds itself — requesting more returns `403`.
+
+<Note>Org endpoints read the key from `Authorization: Bearer` only. The `X-API-Key` header works on the SDK and VRT surfaces, not here.</Note>
 
 ## Key prefixes
 
@@ -17,7 +28,7 @@ Grantiva issues three kinds of keys, distinguishable by prefix:
 |--------|------|-----------|
 | `grantiva_prod_sk_` | Server API key with scopes | This endpoint (`POST /api/v1/org/api-keys`) |
 | `aat_` | Organization/tenant key | Provisioned with the organization |
-| `gpat_` | Personal access token tied to a user | CLI authentication flow |
+| `gpat_` | Personal access token tied to a user | [CLI login](/api-reference/auth/cli-sessions) — always full access (`api:all`) |
 
 Use keys in server-to-server requests via the `Authorization` header:
 
@@ -26,6 +37,8 @@ Authorization: Bearer grantiva_prod_sk_...
 ```
 
 <Warning>The raw key is returned **only once**, at creation or rotation time. Only a SHA-256 hash is stored — a lost key cannot be recovered, only rotated.</Warning>
+
+Key-authenticated requests are rate limited in the `apikey` bucket — see [API Conventions](/api-reference/conventions#per-tier-limits).
 
 ---
 
@@ -75,8 +88,6 @@ Returns all API keys for the organization (including revoked ones), sorted by cr
 POST /api/v1/org/api-keys
 ```
 
-Requires **Admin** role.
-
 **Request body**
 
 ```json
@@ -89,8 +100,8 @@ Requires **Admin** role.
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `name` | string | Yes | Label shown in the dashboard |
-| `scopes` | string[] | Yes | At least one valid scope. Unknown scope strings are ignored; if none remain, the request fails with `400` |
+| `name` | string | Yes | Label shown in the dashboard, 1–100 characters |
+| `scopes` | string[] | Yes | At least one scope. Any unrecognized scope string rejects the whole request |
 | `expiresAt` | string | No | ISO 8601 expiration date. Omit for a non-expiring key |
 
 **Response** — `200 OK`
@@ -115,8 +126,8 @@ Requires **Admin** role.
 
 | Status | Meaning |
 |--------|---------|
-| 400 | No valid scope provided, invalid `expiresAt` format, scopes not available on your tier, or the active-key limit for your tier is reached |
-| 403 | Caller is not an Admin |
+| 400 | Unknown scope string, no scopes, name missing or over 100 characters, invalid `expiresAt` format, scopes not available on your tier, or the active-key limit for your tier is reached |
+| 403 | Session caller is not an Admin, or a key caller asked for scopes it does not itself hold |
 
 ---
 
@@ -126,7 +137,7 @@ Requires **Admin** role.
 POST /api/v1/org/api-keys/:id/rotate
 ```
 
-Requires **Admin** role. Generates a new key with the same scopes, expiration, and IP allow-list. The new key is named `"<old name> (Rotated)"`.
+Generates a new key with the same scopes, expiration, and IP allow-list. The new key is named `"<old name> (Rotated)"`. Rotation does not re-check tier scope availability — an existing key keeps exactly the access it had.
 
 **Request body** (optional)
 
@@ -148,6 +159,7 @@ Same shape as the create response, including the new `rawKey` (shown once).
 
 | Status | Meaning |
 |--------|---------|
+| 400 | The new key would exceed the active-key limit for your tier |
 | 404 | Key not found in this organization, or already revoked |
 
 ---
@@ -159,9 +171,15 @@ POST /api/v1/org/api-keys/:id/revoke
 DELETE /api/v1/org/api-keys/:id
 ```
 
-Both routes are equivalent. Requires **Admin** role. The key is deactivated immediately and cannot be reactivated.
+Both routes are equivalent. The key is deactivated immediately and cannot be reactivated.
 
 **Response** — `204 No Content`
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 404 | Key not found in this organization |
 
 ---
 
@@ -184,24 +202,47 @@ Scopes follow a `resource:action` format. A key with `api:all` passes every scop
 | `apps:read` | View app configurations |
 | `apps:write` | Create/update app configurations |
 | `apps:delete` | Delete apps |
+| `flags:read` | View feature flags, environments, and overrides |
+| `flags:write` | Create/update/delete feature flags, environments, and overrides |
+| `feedback:read` | View feature requests and support tickets |
+| `feedback:write` | Submit feature requests, votes, comments, and support tickets |
+| `feedback:manage` | Triage feedback as staff: change status, reply, set priority |
+| `vrt:read` | View visual regression runs and baselines |
+| `vrt:write` | Submit visual regression runs and manage baselines |
+| `release_notes:read` | View What's New release notes |
+| `release_notes:write` | Create, edit, publish, and delete What's New release notes |
+| `org:read` | View organization settings, usage, members, and notification preferences |
+| `org:write` | Change organization settings, notification preferences, and the failure-rate alert |
+| `alerts:read` | View risk alert rules and their deliveries |
+| `alerts:write` | Create, update, and delete risk alert rules |
+| `keys:read` | List API keys |
+| `keys:write` | Create, rotate, and revoke API keys |
 | `webhooks:read` | View webhook configurations |
 | `webhooks:write` | Create/update webhooks |
 | `webhooks:delete` | Delete webhooks |
 | `webhooks:test` | Send test webhook events |
-| `admin:audit` | Access audit logs (Enterprise) |
-| `admin:compliance` | Generate compliance reports (Enterprise) |
-| `admin:billing` | Access billing information (Enterprise) |
-| `admin:team` | Manage team members (Enterprise) |
+| `admin:audit` | Access audit logs |
+| `admin:compliance` | Generate compliance reports |
+| `admin:billing` | Access billing information |
+| `admin:team` | Manage team members and invites |
 | `attestation:validate` | Validate attestations |
-| `api:all` | Full access to all APIs (Enterprise) |
+| `api:all` | Full access to all APIs |
 
 **Scope availability by tier**
 
 | Tier | Available scopes |
 |------|------------------|
 | Free | None — no API keys |
-| Pro (`basic`) | `analytics:read`, `devices:read` |
-| Business (`professional`) | Everything except `admin:*` and `api:all` |
+| Pro | `analytics:read`, `devices:read`, `flags:read`, `flags:write`, `feedback:read`, `feedback:write`, `feedback:manage`, `vrt:read`, `vrt:write`, `release_notes:read`, `release_notes:write`, `org:read`, `org:write`, `alerts:read`, `keys:read`, `keys:write` |
+| Business | Everything except `admin:*` and `api:all` |
 | Enterprise | All scopes |
 
 Requesting a scope outside your tier returns `400` with the invalid scopes listed.
+
+---
+
+## See also
+
+- [Team & Invites](/api-reference/org/team)
+- [Organization Settings](/api-reference/org/settings)
+- [Webhook Endpoints](/api-reference/webhooks/endpoints)

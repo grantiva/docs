@@ -1,74 +1,113 @@
 ---
 title: "Installation"
-description: "Install the Grantiva CLI for visual regression testing"
+description: "Install the Grantiva CLI and authenticate"
 ---
-
-## Homebrew
-
-```bash
-brew install grantiva/tap/grantiva
-```
-
-## From source
-
-```bash
-git clone https://github.com/grantiva/cli.git
-cd cli
-swift build -c release
-cp .build/release/grantiva /usr/local/bin/grantiva
-```
 
 ## Requirements
 
-- macOS 15+
-- Xcode 16+
-- Swift 6.1+
+- macOS 15 or later
+- Xcode 16 or later
+- Swift 6.1+ (only needed to build from source)
 
-## Verify installation
+## Install
+
+<Tabs>
+  <Tab title="Homebrew">
+    ```bash
+    brew install grantiva/tap/grantiva
+    ```
+
+    Upgrade the same way:
+
+    ```bash
+    brew upgrade grantiva
+    ```
+  </Tab>
+  <Tab title="Release tarball">
+    Each release publishes a universal (arm64 + x86_64) macOS binary on [GitHub Releases](https://github.com/grantiva/cli/releases).
+
+    ```bash
+    curl -fsSL -o grantiva.tar.gz \
+      https://github.com/grantiva/cli/releases/download/v1.9.0/grantiva-v1.9.0-macos.tar.gz
+    tar -xzf grantiva.tar.gz
+    sudo mv grantiva grantiva_GrantivaCore.bundle /usr/local/bin/
+    ```
+
+    <Warning>
+    The archive contains two items: the `grantiva` binary and the `grantiva_GrantivaCore.bundle` resource bundle. Keep them next to each other — the CLI cannot extract its embedded runner without the bundle.
+    </Warning>
+  </Tab>
+  <Tab title="From source">
+    ```bash
+    git clone https://github.com/grantiva/cli.git
+    cd cli
+    swift build -c release
+    cp .build/release/grantiva /usr/local/bin/grantiva
+    ```
+  </Tab>
+</Tabs>
+
+## Verify
 
 ```bash
+grantiva --version
 grantiva doctor
 ```
 
-This checks your environment: macOS version, Xcode installation, Swift version, simulator availability, and command-line tools.
+`doctor` checks Xcode and its version, whether a simulator is booted, whether the runner is extracted, `grantiva.yml`, the git repository, your Grantiva auth, and GitHub App configuration. A failing **required** check exits `1`; the optional ones are advisory and do not affect the exit code, so `grantiva doctor || exit 1` is a usable CI preflight.
+
+## Extract the runner
+
+UI automation runs through GrantivaAgent, a WebDriverAgent embedded in the CLI. Extract it once after installing or upgrading:
+
+```bash
+grantiva runner install
+```
+
+Commands that drive the simulator extract it on demand too, so this step is optional — running it up front just moves the one-time cost out of your first test run.
 
 ## Authenticate
 
-### Browser login (interactive)
+Local capture and comparison work with no account. You need credentials for `grantiva ci run`, cloud baselines, and every `grantiva console` command.
 
-```bash
-grantiva auth login
-```
+<Tabs>
+  <Tab title="Browser login">
+    ```bash
+    grantiva auth login
+    ```
 
-Opens your browser for login. Credentials are saved to `~/.grantiva/auth.json`.
+    Opens your browser and polls for up to 5 minutes. Credentials are written to `~/.grantiva/auth.json` with mode `0600`.
+  </Tab>
+  <Tab title="API key">
+    ```bash
+    grantiva auth login --api-key gpat_your_key
+    ```
 
-### API key (CI/headless)
+    Validates the key and saves it to the same file. Point at a different deployment with `--base-url`.
+  </Tab>
+  <Tab title="Environment (CI)">
+    ```bash
+    export GRANTIVA_API_KEY="gpat_your_key"
+    export GRANTIVA_API_URL="https://api.grantiva.io"   # optional
+    ```
 
-```bash
-grantiva auth login --api-key YOUR_API_KEY
-```
+    The environment variable takes precedence over `~/.grantiva/auth.json`, so nothing needs writing to disk on a CI runner.
+  </Tab>
+</Tabs>
 
-Or use environment variables:
-
-```bash
-export GRANTIVA_API_KEY="your-api-key"
-```
-
-### Check auth status
+Check what the CLI is using:
 
 ```bash
 grantiva auth status
 ```
 
-### Logout
-
-```bash
-grantiva auth logout
-```
+It reports the source as `env` or `file`, the base URL, and the key prefix. `grantiva auth logout` deletes `~/.grantiva/auth.json`; it does not clear `GRANTIVA_API_KEY` from your environment.
 
 ## Next steps
 
-- [VRT Concepts](/concepts/vrt) — how the CLI driver works, baseline lifecycle, and auth model
-- [VRT Quick Start](/quickstart-vrt) — capture your first screenshots in under 10 minutes
-- [CLI Commands](/cli/commands) — full reference for all `grantiva` commands
-- [CI Integration](/cli/ci-integration) — GitHub Actions, pre-built binaries, and parallel runs
+- [VRT quick start](/quickstart-vrt) — capture your first screenshots
+- [Configuration](/cli/configuration) — the `grantiva.yml` reference
+- [Commands](/cli/commands) — every `grantiva` command
+- [Console commands](/cli/console) — your dashboard from the terminal
+- [Simulator management](/cli/simulators) — capacity, leases, and teardown
+- [CI integration](/cli/ci-integration) — GitHub Actions, pre-built binaries, parallel runs

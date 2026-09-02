@@ -1,0 +1,124 @@
+---
+title: "Attestation Failure Alerts"
+description: "Get an email when your attestation failure rate spikes"
+---
+
+Grantiva watches your organization's attestation failure rate and emails you when it spikes — a fast signal that a bad release, a misconfigured app, or an expired Team ID setting is blocking real users.
+
+**How it fires**
+
+- The failure rate is computed over the **last hour** of attestations.
+- An alert is sent when the rate is **above** your threshold and at least `minAttestationCount` attestations happened in that window.
+- After an alert, the organization is in a **4-hour cooldown** before another can be sent.
+- Alerts are emailed to the organization's billing contact, falling back to the owner's account email.
+
+## Authentication
+
+These endpoints accept either a dashboard session cookie or a server API key sent as `Authorization: Bearer <key>`.
+
+| Endpoint | Session role | Key scope |
+|----------|--------------|-----------|
+| `GET /api/v1/org/alerts/failure-rate` | Any member | `alerts:read` |
+| `PATCH /api/v1/org/alerts/failure-rate` | Admin | `org:write` |
+| `GET /api/v1/org/alerts/failure-rate/history` | Any member | `alerts:read` |
+
+---
+
+## Get the alert configuration
+
+```
+GET /api/v1/org/alerts/failure-rate
+```
+
+Returns the organization's configuration. If none has been saved yet, a default, not-yet-persisted configuration is returned with `isEnabled: false` — the `id` in that case is a placeholder and changes between calls.
+
+**Response**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "isEnabled": true,
+  "threshold": 20,
+  "minAttestationCount": 10,
+  "lastAlertedAt": "2026-07-26T09:00:00Z",
+  "createdAt": "2026-06-01T12:00:00Z",
+  "updatedAt": "2026-07-20T08:30:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `isEnabled` | boolean | Whether alerting is on |
+| `threshold` | integer | Failure-rate percentage that triggers an alert. Default 20 |
+| `minAttestationCount` | integer | Minimum attestations in the one-hour window before alerting. Default 10 |
+| `lastAlertedAt` | string \| null | When the last alert email was sent — the cooldown anchor |
+
+---
+
+## Update the alert configuration
+
+```
+PATCH /api/v1/org/alerts/failure-rate
+```
+
+Creates the configuration on first call. Only fields present in the body are changed.
+
+**Request body**
+
+```json
+{
+  "isEnabled": true,
+  "threshold": 15,
+  "minAttestationCount": 25
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `isEnabled` | boolean | No | Turn alerting on or off |
+| `threshold` | integer | No | 5–50 |
+| `minAttestationCount` | integer | No | Minimum attestations in the window |
+
+**Response** — `200 OK` — the updated configuration.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | `threshold` outside 5–50 |
+
+---
+
+## List alert history
+
+```
+GET /api/v1/org/alerts/failure-rate/history
+```
+
+The 50 most recent alerts sent for this organization, newest first.
+
+**Response**
+
+```json
+[
+  {
+    "id": "7f3e2a10-1b2c-4d5e-8f90-112233445566",
+    "failureRate": 31.4,
+    "attestationCount": 812,
+    "triggeredAt": "2026-07-26T09:00:00Z"
+  }
+]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `failureRate` | number | Measured failure percentage at the time of the alert |
+| `attestationCount` | integer | Attestations counted in the one-hour window |
+| `triggeredAt` | string \| null | When the alert was recorded |
+
+---
+
+## See also
+
+- [Risk Alert Rules](/api-reference/org/risk-alerts) — per-device risk webhooks
+- [Organization Settings](/api-reference/org/settings) — notification preferences

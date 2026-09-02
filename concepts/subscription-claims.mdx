@@ -5,7 +5,7 @@ description: "Project your app's Apple IAP and Stripe subscription state into at
 
 Grantiva can ingest your app's own subscription state — from **Apple In-App Purchase** and/or **your Stripe account** — and surface it as a managed `subscription` object inside `custom_claims` in every attestation JWT. Your backend gates features by verifying the signed JWT it already receives; there is no entitlement API to call and **no API key involved**.
 
-<Note>Subscription entitlement ingestion is an **Enterprise** feature.</Note>
+<Note>Subscription entitlement ingestion is available on **every plan**. Configuring it needs the **Admin** role.</Note>
 
 ## Sharing units (families)
 
@@ -59,7 +59,7 @@ Rules worth knowing:
 
 - **Absent means free.** If the device's sharing unit has no entitlement, the `subscription` key is simply not present.
 - **Gate on `is_active`**, not on `status` — it already accounts for grace periods.
-- When a unit holds multiple entitlements (two payers, or Apple + Stripe), the JWT surfaces the **best** one: active-like first, then higher tier, then later expiry.
+- When a unit holds multiple entitlements (two payers, or Apple + Stripe), the JWT surfaces the **best** one, chosen in this order: production beats sandbox, then active or in-grace beats everything else, then higher tier, then later expiry.
 - `subscription` is a **reserved claim key**, managed by Grantiva. Attempts to create a custom claim named `subscription` are rejected, and the managed claim is injected even if your custom-claims toggle is off.
 - The JWT has a TTL of at most 1 hour and refreshes on every attest/refresh, so the claim self-heals — treat the JWT as the source of truth.
 
@@ -78,13 +78,30 @@ Your Stripe account                     ─► POST /webhooks/stripe/entitlement
 
 Grantiva resolves the sharing unit from the `appAccountToken` / `client_reference_id`, maps the product or price to a tier using your [entitlement configuration](/api-reference/entitlements/config), updates the entitlement, and from then on projects the claim into every JWT minted for any device in that unit. Ingestion trusts source events; there is no periodic re-sync against the App Store Server API or Stripe API in v1.
 
+Both endpoints authenticate on the **signature** alone — Apple's JWS is validated to Apple Root CA G3, and the Stripe path uses the per-organization signing secret you configured. Neither takes a session or API key.
+
+### Claiming a past purchase
+
+Webhook ingestion can't cover two cases: a purchase made before the sharing-unit id existed, so the original transaction carried no `appAccountToken`; and a "restore purchases" onto a different account or family. For both, the app presents its StoreKit 2 transaction directly:
+
+```
+POST /api/v1/entitlements/apple/claim-transaction
+{ "subjectId": "<sharing-unit UUID>", "signedTransaction": "<Transaction.jwsRepresentation>" }
+```
+
+The JWS is the authentication, verified to the same Apple root. Grantiva creates the Subject if it doesn't exist yet and links the entitlement to it. A stale transaction can never regress newer server-side state: if the stored entitlement already has a later expiry, only the Subject link is updated and the response comes back with `linkOnly: true`.
+
+### Seeing why an entitlement didn't land
+
+Every permanent drop that Grantiva can attribute to your organization — ingestion disabled, unmapped product, missing `appAccountToken`, replayed event — is recorded and readable from `GET /api/v1/org/entitlement-ingest-events`, alongside successfully processed events. Check there first when a sandbox test doesn't produce a claim.
+
 ## Instant invalidation webhooks
 
 JWTs live up to an hour, so Grantiva also fires outbound webhooks the moment an entitlement changes: `subscription.changed` (always), `subscription.expired`, and `subscription.refunded`. Use them as a cache-bust nudge — evict whatever you cached for that `subject_id` and re-read the next JWT. See [Webhooks](/concepts/webhooks#subscription-events) for payloads and signature verification.
 
 ## Setup checklist
 
-1. [Configure your product/price → tier mapping](/api-reference/entitlements/config) (Enterprise, dashboard admin).
+1. [Configure your product/price → tier mapping](/api-reference/entitlements/config) (dashboard, Admin role).
 2. Point Apple App Store Server Notifications v2 and/or your Stripe webhook at Grantiva.
 3. In your app: mint a household UUID, call `setSubjectId`, and pass the same UUID at purchase time.
 4. In your backend: verify the JWT against [Grantiva's JWKS](/backend-verification) and gate on `custom_claims.subscription.is_active`.

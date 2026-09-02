@@ -31,7 +31,7 @@ targets: [
     .target(
         name: "YourApp",
         dependencies: [
-            .product(name: "Grantiva", package: "Grantiva")
+            .product(name: "Grantiva", package: "ios-sdk")
         ]
     )
 ]
@@ -64,10 +64,22 @@ let grantiva = Grantiva(teamId: "YOUR_TEAM_ID")
 #endif
 ```
 
-In API key mode, the SDK skips real App Attest and returns a synthetic attestation result. Do not ship API keys in production builds.
+In API key mode, the SDK skips real App Attest entirely and returns a synthetic `AttestationResult`: `token` is the placeholder string `"simulator-dev-token"`, `riskScore` is `nil`, and `deviceIntegrity` is `"api_key_mode"`. Requests to the flag and feedback endpoints authenticate with the API key instead of a JWT. Do not ship API keys in production builds.
+
+Calling `validateAttestation()` in the Simulator *without* an API key throws `GrantivaError.simulatorAPIKeyRequired`.
 
 ## App Attest capability
 
 No special entitlements are required. App Attest is available on all iOS 14+ devices (real hardware only). The SDK checks availability at runtime and throws `GrantivaError.deviceNotSupported` if unavailable.
 
 > **Note:** While Apple introduced App Attest in iOS 14, the Grantiva SDK requires iOS 18.0+.
+
+## SDK version
+
+The compiled-in version string is available at runtime:
+
+```swift
+GrantivaVersion.current  // "2.1.0"
+```
+
+It is also sent automatically as part of the device context attached to feedback and flag requests.

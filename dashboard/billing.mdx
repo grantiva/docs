@@ -1,11 +1,11 @@
 ---
 title: "Billing & Plans"
-description: "Understand MAD limits, what happens when you approach them, and how to upgrade or downgrade your plan"
+description: "What each plan includes, what happens when you approach your MAD limit, and how to change plans"
 ---
 
 ## How billing works
 
-Grantiva uses **flat monthly pricing** based on your plan tier. There are no per-attestation fees and no overage charges.
+Grantiva uses **flat monthly pricing** based on your plan. There are no per-attestation fees and no overage charges.
 
 | Plan | Price | Monthly Active Devices |
 |------|-------|----------------------|
@@ -16,74 +16,92 @@ Grantiva uses **flat monthly pricing** based on your plan tier. There are no per
 
 Annual billing saves 20% on all paid plans.
 
+### What else scales with your plan
+
+| | Free | Pro | Business | Enterprise |
+|---|--:|--:|--:|--:|
+| Apps | 2 | 3 | 10 | Unlimited |
+| Team seats | 1 | 3 | 10 | 50 |
+| Custom claims | 1 | 5 | 10 | 20 |
+| Webhook endpoints | — | 3 | 10 | Unlimited |
+| Feature flags per app | 10 | 50 | 200 | Unlimited |
+| Environments | 1 | 3 | 10 | Unlimited |
+| Targeting rules per flag | — | 5 | 20 | Unlimited |
+| Visual testing baseline screens | 5 | 25 | Unlimited | Unlimited |
+| Analytics retention | 14 days | 30 days | 90 days | 1 year |
+| Support | Community | Email (48h) | Priority (24h) | Dedicated (4h) + Slack |
+
 ## Monthly Active Devices (MAD)
 
-A **Monthly Active Device (MAD)** is a unique device that performs at least one attestation during your billing period. If the same device attests 100 times in a month, it counts as 1 MAD.
+A **Monthly Active Device** is a unique device that performs at least one attestation during your billing period. If the same device attests 100 times in a month, it counts as 1 MAD.
 
-Your MAD count resets at the start of each billing period.
+Your MAD count resets at the start of each billing period. Unused MADs do not roll over.
+
+<Note>
+A device that regenerates its App Attest key mid-period is matched back to its existing profile by a hashed hardware fingerprint, so a key rotation does not cost you a second MAD.
+</Note>
 
 ## What happens when you approach your limit
 
-Grantiva is designed to **never break your app for existing users**. Here's what happens as you scale:
+Grantiva is designed to **never break your app for existing users**.
 
-- **80% of limit reached** — You'll receive an email notification and see a warning banner in your dashboard. All attestations continue working normally.
-- **100% of limit reached** — You'll receive a second notification. A **grace period** begins automatically: 7 days on Free and Pro, 14 days on Business (Enterprise has no MAD limit). Devices already in your fleet keep working. New devices can still attest during the grace period, giving you time to upgrade.
-- **After the grace period** — If you haven't upgraded, new device onboarding pauses until you do. Existing attested devices are never affected — they continue working regardless. Blocked new-device attestations receive an HTTP `402 Payment Required` response with error code `quota_exceeded` — see [Validate Attestation](/api-reference/attestation/validate#errors).
+- **80%, 90%, and 100% of your limit** — you get an email at each threshold, once per billing period, and a warning banner appears in the dashboard. Attestations continue working normally.
+- **After 100%** — a **grace period** starts automatically: 7 days on Free and Pro, 14 days on Business. Enterprise has no MAD limit, so no grace period applies. Devices already in your fleet keep working, and new devices can still attest during the window.
+- **After the grace period** — new device onboarding pauses until you upgrade. Existing attested devices are never affected. A blocked new-device attestation gets an HTTP `402 Payment Required` with error code `quota_exceeded` — see [Validate Attestation](/api-reference/attestation/validate#errors).
 
 <Callout type="info">
-**No surprise charges.** We will always notify you before taking any action. You will never receive an unexpected bill.
+**No surprise charges.** You are always notified before anything changes, and you will never receive an unexpected bill.
 </Callout>
 
-## Upgrading your plan
+## Where to see your usage
 
-You can upgrade at any time from the **Account Settings → Billing** page in your dashboard.
+**Plan & Usage** shows your current plan, the date your billing period resets, and a Monthly Active Devices meter. The **Billing** page repeats the meter alongside plan comparison, and the **Overview** page carries a MAD usage strip.
 
-1. Go to **Account Settings** → **Billing**
-2. Click **Upgrade Plan**
-3. Select your new tier
-4. Confirm payment
+## Upgrading
 
-Upgrades take effect **immediately**. Your new MAD limit applies right away, and you'll be charged a prorated amount for the remainder of the current billing period.
+Upgrades are self-serve from **Billing** in the dashboard.
 
-## Downgrading your plan
+<Steps>
+  <Step title="Open Billing">
+    Go to **Billing** in the Organization section of the sidebar.
+  </Step>
+  <Step title="Pick a plan">
+    Choose a higher tier from the plan grid and pick monthly or annual billing.
+  </Step>
+  <Step title="Pay">
+    You're taken to Stripe Checkout. Once payment completes, Grantiva applies the new tier.
+  </Step>
+</Steps>
 
-Downgrades take effect at the **end of your current billing period**. You'll continue to have access to your current plan's features until then.
+Upgrades take effect **immediately** — your new MAD limit and feature set apply as soon as the payment clears, and Stripe prorates the remainder of the current billing period.
 
-If your current MAD usage exceeds the limit of the plan you're downgrading to, you'll see a warning before confirming. We recommend waiting until your MAD usage naturally drops or exporting your data first.
+## Downgrading and cancelling
 
-## Cancelling
+Downgrades and cancellations are **request-based**: submit the form on the **Billing** page with a short reason and the Grantiva team processes it. You'll see a confirmation state once the request is received.
 
-You can cancel your subscription at any time from **Account Settings → Billing → Cancel Plan**.
+- **Downgrade** — you must pick a tier lower than your current one. Downgrades apply at the end of the current billing period, so you keep your current plan's features until then.
+- **Cancel** — your subscription is set to end at the close of the current billing period, and the organization reverts to Free. You can reactivate before the period ends.
 
-After cancellation:
-- Your account reverts to the Free tier at the end of the billing period
-- Your data is retained for 90 days
-- You can reactivate at any time
+If your MAD usage exceeds the limit of the plan you're moving to, export what you need first — see [Export](/dashboard/analytics#export).
 
-## Annual billing
+## Invoices and payment method
 
-Switch to annual billing from **Account Settings → Billing → Billing Cycle** to save 20%.
-
-Annual plans are charged upfront for 12 months. Prorated refunds are not issued for mid-year cancellations, but you can downgrade to Free at any time.
+Paid plans get an **Invoices & Payment** section on the Billing page that opens the Stripe customer portal. Update your card, change your billing address, and download past invoices there.
 
 ## Frequently asked questions
 
 **Will my users' attestations fail if I exceed my MAD limit?**
 
-No. Existing attested devices always keep working. When you hit your limit, a grace period starts automatically (7 days on Free/Pro, 14 days on Business) — new devices can still attest during this window. After the grace period, new device onboarding pauses until you upgrade, but your existing users are never affected.
+No. Existing attested devices always keep working. When you hit your limit a grace period starts automatically — 7 days on Free and Pro, 14 days on Business — and new devices can still attest during it. After the grace period, new device onboarding pauses until you upgrade; your existing users are unaffected.
 
 **Can I get a refund if I upgrade and then downgrade?**
 
-Upgrades are prorated. If you upgrade mid-month and then downgrade, you'll be charged only for the days on the higher plan. Contact [support@grantiva.io](mailto:support@grantiva.io) if you need help with a billing adjustment.
-
-**Where can I see my current MAD usage?**
-
-Your current MAD count and limit are shown in **Dashboard → Analytics** and in **Account Settings → Billing**. The attestation page also shows your MAD this month in the stat cards.
+Upgrades are prorated by Stripe. Email [support@grantiva.io](mailto:support@grantiva.io) if you need a billing adjustment.
 
 **Do unused MADs roll over?**
 
-No. MAD counts reset at the start of each billing period. There are no rollover credits.
+No. MAD counts reset at the start of each billing period, and there are no rollover credits.
 
 **Can I add more MADs without changing my plan?**
 
-Not currently. Contact [sales@grantiva.io](mailto:sales@grantiva.io) if you need a custom MAD allowance — we can accommodate this on Enterprise plans.
+Not today. Contact [sales@grantiva.io](mailto:sales@grantiva.io) if you need a custom allowance — that's available on Enterprise.

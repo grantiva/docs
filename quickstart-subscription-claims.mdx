@@ -7,9 +7,8 @@ By the end of this guide, your backend will authorize premium features by readin
 
 ## Prerequisites
 
-- **Enterprise plan** (entitlement ingestion is Enterprise-only)
 - Grantiva SDK **2.1.0+** installed and attestation working ([Quick Start](/quickstart))
-- Admin access to your Grantiva dashboard
+- The **Admin** role in your Grantiva organization — entitlement ingestion itself is available on every plan
 - An Apple app with In-App Purchases and/or a Stripe account selling subscriptions
 
 ## 1. Map your products to tiers
@@ -97,6 +96,25 @@ JWTs refresh within an hour on their own. If you cache authorization state, subs
 ## Sandbox testing
 
 Sandbox purchases flow through with `"environment": "sandbox"` in the claim. Keep the check from step 4 (`environment === "production"`) in production backends, and relax it in staging.
+
+## Claiming purchases made before you had a sharing-unit id
+
+Purchases made before you started sending a sharing-unit id carry no `appAccountToken`, so webhook ingestion can't attach them. Have the app present the transaction instead:
+
+```swift
+for await result in Transaction.currentEntitlements {
+    guard case .verified(let transaction) = result else { continue }
+    // POST { subjectId, signedTransaction } to
+    // https://api.grantiva.io/api/v1/entitlements/apple/claim-transaction
+    try await claimTransaction(subjectId: familyId, jws: result.jwsRepresentation)
+}
+```
+
+The same call handles "restore purchases" onto a different account or family. See [Subscription Claims](/concepts/subscription-claims#claiming-a-past-purchase).
+
+## Troubleshooting
+
+If a claim doesn't appear, read `GET /api/v1/org/entitlement-ingest-events` — it lists processed events and every drop Grantiva could attribute to your organization, with the reason.
 
 ## Next steps
 

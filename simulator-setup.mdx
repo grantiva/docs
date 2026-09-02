@@ -3,7 +3,9 @@ title: "Simulator Setup"
 description: "Develop and test with Grantiva on the iOS Simulator using API key fallback"
 ---
 
-## Why App Attest doesn't work in Simulator
+This page is about running the **Grantiva SDK** in the iOS Simulator. For provisioning and tearing down simulators with the CLI — capacity limits, leases, and cleanup — see [Simulator management](/cli/simulators).
+
+## Why App Attest doesn't work in the Simulator
 
 Apple's App Attest service requires a physical Secure Enclave — a hardware chip present in real iPhones and iPads, but not in the iOS Simulator. There is no workaround for this; it's a deliberate hardware requirement.
 
@@ -75,5 +77,11 @@ Use this path only for development and CI. Never ship API key fallback to the Ap
   </Card>
   <Card title="Error handling" icon="triangle-exclamation" href="/sdk/error-handling">
     Handle GrantivaError.simulatorAPIKeyRequired and all other SDK errors.
+  </Card>
+  <Card title="Simulator management" icon="terminal" href="/cli/simulators">
+    Provision, share, and reclaim simulators with the Grantiva CLI.
+  </Card>
+  <Card title="Testing" icon="vial" href="/sdk/testing">
+    Mock attestation and test SDK integration without a device.
   </Card>
 </CardGroup>

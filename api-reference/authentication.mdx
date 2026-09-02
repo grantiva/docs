@@ -21,9 +21,11 @@ These headers are sent automatically by the SDK — but they only *identify* the
 **All other SDK endpoints** — feature flags, the flag SSE stream, heartbeat, feedback, and support — additionally require one of:
 
 - **A Grantiva JWT** issued by attestation, sent as `Authorization: Bearer <jwt>` (this is what the SDK does automatically after `validateAttestation()`), or
-- **An API key** (simulator/development mode, or server-side callers).
+- **An API key** (simulator/development mode, or server-side callers), sent as `Authorization: Bearer <key>`.
 
 Requests with only the identity headers receive `401 Unauthorized` with `WWW-Authenticate: Bearer realm="grantiva"`.
+
+If you send an API key and omit the identity headers, the request resolves to your organization but not to a specific app — feedback and flag responses then cover the whole organization rather than one app. Personal keys (`gpat_`) are the exception: feedback listings reject them without `X-Bundle-ID` and `X-Team-ID` (`400 Bad Request`).
 
 <Note>
 In practice the SDK handles this for you: run `validateAttestation()` once before using flags, feedback, or support. In the iOS Simulator (no App Attest), initialize the SDK with an API key instead — see [Simulator Setup](/simulator-setup).
@@ -31,17 +33,17 @@ In practice the SDK handles this for you: run `validateAttestation()` once befor
 
 ## Server-to-server
 
-For backend integrations (analytics, VRT CLI), use an **API key**:
+For backend integrations (analytics, VRT), use an **API key**:
 
 ```bash
 # Header style
-curl -H "X-API-Key: aat_your_api_key" https://api.grantiva.io/api/v1/analytics/dashboard
+curl -H "X-API-Key: aat_your_api_key" https://api.grantiva.io/api/v1/analytics/report
 
 # Or Bearer style
-curl -H "Authorization: Bearer aat_your_api_key" https://api.grantiva.io/api/v1/analytics/dashboard
+curl -H "Authorization: Bearer aat_your_api_key" https://api.grantiva.io/api/v1/analytics/report
 ```
 
-API keys are created in the dashboard under **Settings**.
+API keys are created in the dashboard under **Settings**, or with `POST /api/v1/org/api-keys`.
 
 | Prefix | Type |
 |--------|------|
@@ -49,23 +51,52 @@ API keys are created in the dashboard under **Settings**.
 | `gpat_` | Personal API key |
 | `grantiva_` | Legacy key format |
 
+<Note>`X-API-Key` is accepted only on the analytics and VRT endpoints. The SDK endpoints and the `/api/v1/org/*` console endpoints read keys from `Authorization: Bearer` only.</Note>
+
+## Console API (`/api/v1/org/*`)
+
+The `/api/v1/org/*` endpoints back both the dashboard and the `grantiva` CLI, so they accept **either** a dashboard session cookie **or** an API key:
+
+- **API key** — `Authorization: Bearer gpat_…` / `aat_…`. The key's scopes decide what it may do; org roles do not apply.
+- **Session cookie** — the dashboard path. Scopes do not apply; your org role does (viewer+ for reads, member+ or admin+ for writes, per endpoint).
+
+Key-authenticated console requests also count against the `apikey` rate-limit bucket. See [API Conventions](/api-reference/conventions#rate-limiting).
+
+### Scopes
+
+Each endpoint page lists the scopes it needs. The `api:all` scope satisfies every check, and legacy organization keys created before scopes existed are treated as full access.
+
+| Scope | Grants |
+|-------|--------|
+| `apps:read` / `apps:write` / `apps:delete` | App registration and lifecycle |
+| `devices:read` | Device inventory |
+| `claims:read` / `claims:write` / `claims:delete` / `claims:test` | Custom claim definitions and evaluation |
+| `flags:read` / `flags:write` | Feature flags, rules, overrides, environments |
+| `feedback:read` / `feedback:write` | Read and submit feature requests, votes, comments, tickets |
+| `feedback:manage` | Staff actions — status, priority, replies |
+| `analytics:read` / `analytics:export` | Analytics reports; data export |
+| `webhooks:read` / `webhooks:write` / `webhooks:delete` / `webhooks:test` | Webhook endpoints |
+| `alerts:read` / `alerts:write` | Risk alert rules and failure-rate alerts |
+| `keys:read` / `keys:write` | API key management |
+| `org:read` / `org:write` | Settings, usage, members, notification preferences |
+| `vrt:read` / `vrt:write` | Visual regression testing |
+| `release_notes:read` / `release_notes:write` | "What's New" authoring |
+| `api:all` | Everything |
+
+A request whose key lacks the required scope returns `403 Forbidden` with the required scope names in the message.
+
 ## JWT token
 
-After successful attestation, the SDK receives a JWT token. Protected endpoints require this token:
+After successful attestation, the SDK receives a JWT. Protected SDK endpoints accept it as a bearer token:
 
 ```bash
-curl -H "Authorization: Bearer eyJhbGciOi..." https://api.grantiva.io/api/v1/heartbeat
+curl -H "Authorization: Bearer eyJhbGciOi..." \
+     -H "X-Bundle-ID: com.yourapp.example" \
+     -H "X-Team-ID: ABBM6U9RM5" \
+     https://api.grantiva.io/api/v1/heartbeat
 ```
 
-## Admin API
-
-For internal admin operations:
-
-```bash
-curl -H "X-Admin-API-Key: your_admin_key" https://api.grantiva.io/admin/v1/tenants
-# Or
-curl -H "Authorization: Admin your_admin_key" https://api.grantiva.io/admin/v1/tenants
-```
+Verify these tokens on your own backend with the public keys from [JWKS](/api-reference/attestation/jwks).
 
 ## Summary
 
@@ -73,5 +104,6 @@ curl -H "Authorization: Admin your_admin_key" https://api.grantiva.io/admin/v1/t
 |---------------|-------------|-------------|
 | Attestation (challenge/validate/refresh) | Bundle ID + Team ID headers + attestation object | iOS SDK |
 | Flags, Feedback, Support, Heartbeat | Identity headers **+** attestation JWT or API key | iOS SDK (post-attestation) |
-| Analytics, VRT | API key | Your backend, CLI |
-| Admin | Admin API key | Internal tooling |
+| Analytics, VRT | API key (`X-API-Key` or Bearer) | Your backend, CI |
+| Console (`/api/v1/org/*`) | API key with scopes, or dashboard session | CLI, dashboard |
+| Dashboard-only JSON (`/api/v1/apps`, `/api/v1/claims`, `/api/v1/tenants/me/usage`) | Dashboard session | Dashboard |

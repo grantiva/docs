@@ -49,6 +49,12 @@ data: {"flags":{"dark_mode":true,"upload_limit":50,"theme":"modern"}}
 
 Flag values are typed (boolean, integer, double, string, or JSON), resolved for the requested environment.
 
+<Warning>
+The stream sends each flag's **environment value only** — its "on" value when the flag is active in that environment, its "off" value when it is not. Targeting rules and per-device overrides are not applied, and the stream ignores device context headers. Treat a `flags` event as a change signal, and re-fetch [`GET /api/v1/flags`](/api-reference/flags/get-flags) with your device context when a flag has rules or overrides.
+</Warning>
+
+An unknown `environment` slug streams `{"flags":{}}` rather than erroring, and flags with no value configured in that environment are omitted.
+
 ## Keepalives
 
 Every 20 seconds the server writes an SSE comment line:

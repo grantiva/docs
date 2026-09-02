@@ -1,0 +1,171 @@
+---
+title: "Console: VRT review and release notes"
+description: "Review visual regression runs and author What's New notes from the terminal"
+---
+
+Two areas that close loops a pipeline opens: `vrt` reviews the runs `grantiva ci run` creates, and `releases` authors the What's New notes users see after they upgrade.
+
+## VRT review
+
+`grantiva ci run` creates and completes a run. These commands review it: accept or flag the screens that changed, then approve or reject the run as a whole.
+
+Reads need `vrt:read`; review actions need `vrt:write`.
+
+### `grantiva console vrt runs list`
+
+List a project's runs, newest first.
+
+```bash
+grantiva console vrt runs list <project> [--json]
+```
+
+The project slug is `owner/repo`, taken from the `origin` git remote — the same value `grantiva ci run` uploads under.
+
+### `grantiva console vrt runs get`
+
+Show a run with every screen's result and review state, and how many screens still await review.
+
+```bash
+grantiva console vrt runs get <project> <run-id> [--json]
+```
+
+### `grantiva console vrt screen accept`
+
+Accept a screen's new capture. It becomes the baseline when the run is approved.
+
+```bash
+grantiva console vrt screen accept <project> <run-id> <screen> [<screen>...] [--json]
+```
+
+Several screen names can be passed at once.
+
+### `grantiva console vrt screen flag`
+
+Flag a screen as a real regression. The old baseline is kept even if the run is approved.
+
+```bash
+grantiva console vrt screen flag <project> <run-id> <screen> [<screen>...] [--json]
+```
+
+### `grantiva console vrt screen reset`
+
+Clear a screen's review decision.
+
+```bash
+grantiva console vrt screen reset <project> <run-id> <screen> [<screen>...] [--json]
+```
+
+### `grantiva console vrt approve`
+
+Approve a run. Accepted screens become the branch baselines; flagged screens keep the old baseline.
+
+```bash
+grantiva console vrt approve <project> <run-id> [--accept-all] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--accept-all` | Accept every screen still awaiting review, then approve. |
+
+Every failed or new screen must have been accepted or flagged before approval, unless `--accept-all` is given.
+
+### `grantiva console vrt reject`
+
+Reject a run. Baselines are untouched.
+
+```bash
+grantiva console vrt reject <project> <run-id> [--json]
+```
+
+### A review from a pipeline
+
+```bash
+run_id=$(grantiva ci run --json | jq -r .run_id)
+
+grantiva console vrt runs get acme/my-app "$run_id"
+
+grantiva console vrt screen accept acme/my-app "$run_id" Home Settings
+grantiva console vrt screen flag   acme/my-app "$run_id" Checkout
+
+grantiva console vrt approve acme/my-app "$run_id"
+```
+
+`Home` and `Settings` become the new baselines; `Checkout` keeps the one it had.
+
+## Release notes
+
+`grantiva console releases` authors the What's New notes shown to users after they upgrade. A note is attached to an app and a version; devices see the notes for versions between the one they installed and the one they are running, once published.
+
+Reads need `release_notes:read`; writes need `release_notes:write`. Resolving an app by bundle ID also needs `apps:read`.
+
+### `grantiva console releases list`
+
+List release notes, newest first.
+
+```bash
+grantiva console releases list [--app APP] [--page N] [--per N] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--app` | Only notes for this app (bundle ID or UUID). |
+| `--page` | Page number, starting at 1. |
+| `--per` | Notes per page, 1–100. Default 20. |
+
+### `grantiva console releases get`
+
+Show a release note including its body.
+
+```bash
+grantiva console releases get <note-id> [--json]
+```
+
+### `grantiva console releases create`
+
+```bash
+grantiva console releases create <app> <version> --title TITLE --body TEXT|@file.md
+                                [--publish] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--title` | Title, up to 200 characters. Required. |
+| `--body` | Body as Markdown, inline or `@file.md`, up to 20,000 characters. Required. |
+| `--publish` | Publish immediately instead of leaving it as a draft. |
+
+```bash
+grantiva console releases create com.example.app 2.1.0 \
+  --title "Dark mode" --body @notes/2.1.0.md --publish
+```
+
+### `grantiva console releases update`
+
+Change a note's version, title, or body.
+
+```bash
+grantiva console releases update <note-id> [--version VERSION] [--title TITLE]
+                                [--body TEXT|@file.md] [--json]
+```
+
+Use `publish` and `unpublish` for its state.
+
+### `grantiva console releases publish` / `unpublish`
+
+```bash
+grantiva console releases publish   <note-id> [--json]
+grantiva console releases unpublish <note-id> [--json]
+```
+
+Devices that already read a note are not shown it again if it is unpublished and republished.
+
+### `grantiva console releases delete`
+
+```bash
+grantiva console releases delete <note-id> [--yes] [--json]
+```
+
+## Next steps
+
+- [Console overview](/cli/console) — auth, scopes, and shared conventions
+- [Visual regression testing](/concepts/vrt) — the baseline lifecycle these commands review
+- [CI integration](/cli/ci-integration) — where the runs come from

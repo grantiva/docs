@@ -27,9 +27,9 @@ The body is always the same envelope. All values in `data` are strings:
 }
 ```
 
-Respond with a 2xx status within the timeout. Non-2xx responses and timeouts are retried up to 3 times (after 1, 5, and 30 minutes).
+Respond with a 2xx status. Non-2xx responses and transport failures are retried up to 3 attempts total, after 1, 5, and 30 minutes.
 
-<Note>Webhooks fire on paid tiers only (Pro, Business, Enterprise).</Note>
+<Note>Webhook endpoints can only be created on paid plans (Pro, Business, Enterprise) — see [Webhook Endpoints](/api-reference/webhooks/endpoints).</Note>
 
 ## Device events
 
@@ -142,6 +142,21 @@ Fires when a flag is toggled or its configuration changes.
   "data": {
     "flag_key": "dark_mode",
     "is_active": "true",
+    "tenant_id": "3c9e1b..."
+  }
+}
+```
+
+When the change is a per-environment toggle, `data` also carries the environment slug:
+
+```json
+{
+  "event": "flag.updated",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "flag_key": "dark_mode",
+    "is_active": "true",
+    "environment": "production",
     "tenant_id": "3c9e1b..."
   }
 }

@@ -50,9 +50,9 @@ Availability by plan. **✓** present · **◐** conditional, see the note for t
 | Claim | Type | Free | Pro | Business | Enterprise | Notes |
 |---|---|:--:|:--:|:--:|:--:|---|
 | `sub` | string | ✓ | ✓ | ✓ | ✓ | The App Attest key id. **The stable per-device identifier.** |
-| `kid` | string | ✓ | ✓ | ✓ | ✓ | Same value as `sub`. Not the JWKS key id — that is in the JWT *header*. |
+| `kid` | string | ✓ | ✓ | ✓ | ✓ | Same value as `sub` — the App Attest key id. **Not** the JWKS key id; that is the `kid` in the JWT *header*, and the two are unrelated. |
 | `iat` | integer | ✓ | ✓ | ✓ | ✓ | Issued-at, epoch seconds. |
-| `exp` | integer | ✓ | ✓ | ✓ | ✓ | Expiry, epoch seconds. Default TTL 1 hour, configurable per organization. |
+| `exp` | integer | ✓ | ✓ | ✓ | ✓ | Expiry, epoch seconds. Default TTL 1 hour, configurable per organization with a floor of 5 minutes. |
 | `iss` | string | ✓ | ✓ | ✓ | ✓ | **Your organization's issuer string**, not a fixed Grantiva value. See [Issuer and audience](#issuer-and-audience). |
 | `aud` | string | ✓ | ✓ | ✓ | ✓ | Your organization's audience string. |
 
@@ -74,7 +74,8 @@ Availability by plan. **✓** present · **◐** conditional, see the note for t
 | `attestation_count` | integer | — | ✓ | ✓ | ✓ | Lifetime attestations from this device profile. |
 | `first_seen` | integer | — | ✓ | ✓ | ✓ | Epoch seconds. First attestation from this device. |
 | `last_attestation` | integer | — | ✓ | ✓ | ✓ | Epoch seconds. Equal to `iat` — set when the token is minted. |
-| `permissions` | string[] | — | — | ✓ | ✓ | Grantiva-derived capability hints, e.g. `["basic","payments","transfers"]`. Not your app's permission model. |
+| `permissions` | string[] | — | — | ✓ | ✓ | Grantiva-derived capability hints drawn from a fixed vocabulary: `basic`, `payments`, `transfers`, `high_value`, `admin`, `limited`, `enterprise`. Derived from `device_integrity`, jailbreak status, and attestation history. Not your app's permission model. |
+| `app_store_receipt` | boolean | — | — | ✓ | ✓ | Constant `true`. Carries no signal — see [Claims you should not build on](#claims-you-should-not-build-on). |
 | `device_model` | string | — | — | — | ✓ | e.g. `"iPhone15,2"`. Only what the SDK reported. |
 | `os_version` | string | — | — | — | ✓ | e.g. `"18.0"`. |
 | `app_version` | string | — | — | — | ✓ | e.g. `"2.1.0"`. |
@@ -93,9 +94,13 @@ Availability by plan. **✓** present · **◐** conditional, see the note for t
 |---|---|:--:|:--:|:--:|:--:|
 | `custom_claims` | object | ✓ (max 1, static) | ✓ (max 5) | ✓ (max 10) | ✓ (max 20) |
 
-Your configured claims are nested under `custom_claims`, preserving their JSON types. Grantiva's managed `subscription` object also lives here. See [Custom Claims](/concepts/custom-claims) and [Subscription Claims](/concepts/subscription-claims).
+Your configured claims are nested under `custom_claims`, preserving their JSON types. Grantiva's managed `subscription` object also lives here, on **every** plan — it is injected independently of your custom-claims configuration, so a Free-plan token can carry `custom_claims.subscription` even though Free allows only one custom claim of its own. See [Custom Claims](/concepts/custom-claims) and [Subscription Claims](/concepts/subscription-claims).
 
-The key is omitted entirely when no claims are configured on Free, and is an empty object `{}` on paid plans when no claims evaluate to a value.
+The key is omitted entirely on Free when nothing evaluates to a value, and is an empty object `{}` on paid plans in the same situation.
+
+<Note>
+A custom claim that fails to evaluate is **silently dropped** from the token — a misconfigured claim produces a missing key, never a failed attestation. Check for absence rather than assuming a configured claim is always present.
+</Note>
 
 ## Decoded examples
 
@@ -118,6 +123,7 @@ The key is omitted entirely when no claims are configured on Free, and is an emp
   "first_seen": 1764331200,
   "last_attestation": 1772107200,
   "permissions": ["basic", "payments", "transfers", "high_value", "admin"],
+  "app_store_receipt": true,
   "custom_claims": {
     "user_tier": "premium",
     "subscription": {
@@ -166,14 +172,14 @@ Pinning `iss` and `aud` matters: it is what stops a token minted for a different
 
 `device_id` is **not** a reliable identifier and is populated inconsistently:
 
-- **`POST /attestation/validate`** — carries the device id supplied on the challenge request (`GET /attestation/challenge?device_id=...`). The iOS SDK does not send that parameter, so **the claim is absent on the normal SDK attestation path**.
+- **`POST /attestation/validate`** — carries the device id supplied on the challenge request (`GET /attestation/challenge?device_id=...`). The iOS SDK does not send that parameter, so **the claim is absent on the normal SDK attestation path**. The same value is echoed in the `device_id` field of device webhook payloads, where it is usually an empty string for the same reason.
 - **`POST /attestation/refresh`** — carries Grantiva's internal device-profile UUID.
 
 Use `sub` (the App Attest key id) as your per-device key. It is present on every token on every plan, and it is the identity Apple's attestation actually binds.
 
 ## Verifying the token server-side
 
-Grantiva signs with **RS256**. Publish keys are at `https://api.grantiva.io/.well-known/jwks.json` (alias: `GET /api/v1/attestation/public-key`). Match the `kid` in the **JWT header** — not the `kid` claim in the payload — against the key set. Standard libraries do this for you.
+Grantiva signs with **RS256**, using one signing key across all organizations. Public keys are at `https://api.grantiva.io/.well-known/jwks.json` (alias: `GET /api/v1/attestation/public-key`). Match the `kid` in the **JWT header** — not the `kid` claim in the payload — against the key set. Standard libraries do this for you.
 
 Cache the key set. It is served with `Cache-Control: public, max-age=3600` and changes only on rotation.
 
@@ -331,7 +337,7 @@ These are present in some tokens but carry no dependable signal today. They are 
 
 | Claim | Why |
 |---|---|
-| `app_store_receipt` | Set to `true` when a device profile is created and never updated. It is constant `true` and does not indicate a validated App Store receipt. |
+| `app_store_receipt` | Business and Enterprise only. Set to `true` when a device profile is created and never updated. It is constant `true` and does not indicate a validated App Store receipt. |
 | `network_type` | Enterprise only. Derived from request headers, not from the device. It never reports `"cellular"` or `"wifi"` — in practice it is `"unknown"`, or `"proxy"` when the forwarding chain is long. |
 | `country` | Enterprise only. Populated from `CF-IPCountry` / `CloudFront-Viewer-Country` at the edge, so it is an IP-geolocation guess, and it is **always absent on the `/refresh` path**. |
 | `device_id` | Populated inconsistently between `/validate` and `/refresh`. Use `sub`. |

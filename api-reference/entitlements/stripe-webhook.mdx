@@ -30,7 +30,10 @@ The price id is matched against your `stripe.prices` mapping to resolve the tier
 
 | Status | When |
 |--------|------|
-| 200 | Event processed — **or** permanently unprocessable (ingestion disabled, org not Enterprise, missing `client_reference_id`, unmapped price, replayed event, bad signature) |
+| 200 | Event processed — **or** permanently unprocessable (unknown org id, ingestion disabled, missing `client_reference_id`, unmapped price, replayed event, bad signature) |
+| 400 | Missing `Stripe-Signature` header or request body, or a body that is not a Stripe event |
 | 5xx | Transient server error — Stripe will retry |
 
 Permanent conditions intentionally return 200 so Stripe stops retrying them. Replay protection is keyed on the Stripe event `id`.
+
+Every permanent drop that can be attributed to your organization is recorded — read it back from [`GET /api/v1/org/entitlement-ingest-events`](/api-reference/entitlements/config#ingest-events).

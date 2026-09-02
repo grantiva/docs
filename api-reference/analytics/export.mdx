@@ -1,6 +1,6 @@
 ---
 title: "Export"
-description: "Export analytics data as CSV or JSON"
+description: "Export device or event data as CSV or JSON"
 ---
 
 ## Request
@@ -13,21 +13,35 @@ GET /api/v1/analytics/export
 
 | Header | Required | Description |
 |--------|----------|-------------|
-| `X-API-Key` | Yes | Your API key |
+| `X-API-Key` | Yes | Your API key, with the `analytics:export` scope. `Authorization: Bearer <key>` works too |
 
 ### Query parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `type` | `string` | `csv` | `csv` or `json` |
-| `data` | `string` | `devices` | `devices` or `events` |
-| `period` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d` |
+| `type` | `string` | `csv` | `csv` or `json`. Anything else returns `400` |
+| `data` | `string` | `devices` | `devices` or `events`. Anything else returns `400` |
+| `period` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d`. Anything else returns `400`. Applies to `events` only — device exports are not time-filtered |
+
+Each export returns at most 10,000 rows. Events are ordered newest first.
+
+## Columns
+
+**`data=devices`**
+
+`KeyID`, `DeviceModel`, `OSVersion`, `RiskScore`, `AttestationCount`, `JailbreakDetected`, `FirstSeen`, `LastAttestation`
+
+**`data=events`**
+
+`Timestamp`, `EventType`, `KeyID`, `Success`, `RiskScore`, `IPAddress`, `UserAgent`
+
+Timestamps are ISO 8601. Empty values are emitted as empty strings.
 
 ## Example
 
 ```bash
 # Export device data as CSV
-curl "https://api.grantiva.io/api/v1/analytics/export?type=csv&data=devices&period=30d" \
+curl "https://api.grantiva.io/api/v1/analytics/export?type=csv&data=devices" \
   -H "X-API-Key: aat_your_api_key" \
   -o devices.csv
 
@@ -39,5 +53,20 @@ curl "https://api.grantiva.io/api/v1/analytics/export?type=json&data=events&peri
 
 ## Response
 
-- **CSV**: File download with headers (Content-Type: text/csv)
-- **JSON**: Array of objects
+- **CSV** — `Content-Type: text/csv`, `Content-Disposition: attachment; filename="devices.csv"` (or `events.csv`). The first line is the header row. Fields containing commas, quotes, or newlines are quoted, and values starting with `=`, `+`, `@`, or `-` are prefixed with `'` to defeat spreadsheet formula injection.
+- **JSON** — `Content-Type: application/json`, `Content-Disposition: attachment; filename="devices.json"` (or `events.json`). An array of objects keyed by the column names above, every value a string.
+
+```json
+[
+  {
+    "AttestationCount": "42",
+    "DeviceModel": "iPhone15,2",
+    "FirstSeen": "2026-01-15T10:00:00Z",
+    "JailbreakDetected": "false",
+    "KeyID": "abc123keyid",
+    "LastAttestation": "2026-03-10T12:00:00Z",
+    "OSVersion": "18.0",
+    "RiskScore": "12"
+  }
+]
+```

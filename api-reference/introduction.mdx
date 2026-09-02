@@ -18,18 +18,32 @@ curl https://api.grantiva.io/health
 ```json
 {
   "status": "healthy",
-  "timestamp": "2025-03-10T12:00:00Z"
+  "timestamp": "2026-07-26T12:00:00Z",
+  "commit": "1ab5619"
 }
 ```
 
+See [Health](/api-reference/health) for the detailed and per-component checks.
+
+## Surfaces
+
+| Surface | Path prefix | Who calls it |
+|---------|-------------|--------------|
+| SDK / device | `/api/v1/attestation`, `/api/v1/flags`, `/api/v1/heartbeat`, `/api/v1/feedback`, `/api/v1/support` | The iOS SDK, after attestation |
+| Server-to-server | `/api/v1/analytics`, `/api/v1/vrt` | Your backend or CI, with an API key |
+| Console | `/api/v1/org/*` | The dashboard, and the `grantiva` CLI with an API key |
+
+See [Authentication](/api-reference/authentication) for what each surface accepts.
+
 ## Errors
 
-All errors return a consistent format:
+Errors return a JSON envelope with a stable machine-readable `code`:
 
 ```json
 {
-  "error": "not_found",
-  "message": "Resource not found"
+  "error": "Feature request not found",
+  "code": "not_found",
+  "requestId": "0AF2-4C61"
 }
 ```
 
@@ -37,33 +51,33 @@ All errors return a consistent format:
 |--------|-------------|
 | `400` | Bad request — invalid input |
 | `401` | Unauthorized — missing or invalid authentication |
-| `403` | Forbidden — insufficient permissions or inactive tenant |
+| `402` | Monthly active device quota exhausted |
+| `403` | Forbidden — insufficient permissions, tier limit, or inactive tenant |
 | `404` | Not found |
-| `409` | Conflict — duplicate resource |
+| `409` | Conflict — duplicate resource, or re-attestation required |
+| `422` | Validation failed — see the `fields` array |
 | `429` | Rate limited |
 | `500` | Server error |
 
+The full envelope, including `hint` and `fields`, is described in [API Conventions](/api-reference/conventions#error-envelope).
+
 ## Rate limiting
 
-Rate limits vary by plan. When exceeded, the API returns `429 Too Many Requests`. Retry after the delay indicated in the response.
+Rate limits vary by plan and by endpoint bucket. When exceeded, the API returns `429 Too Many Requests` with a `Retry-After` header. See [API Conventions](/api-reference/conventions#rate-limiting) for the per-tier table.
 
 ## Pagination
 
-List endpoints support pagination:
-
-```
-?page=1&per=20
-```
-
-Responses include metadata:
+Paginated endpoints take `page` and a page-size parameter, but the response envelope differs by surface:
 
 ```json
 {
-  "items": [...],
-  "metadata": {
-    "page": 1,
-    "per": 20,
-    "total": 142
-  }
+  "items": [],
+  "metadata": { "page": 1, "per": 20, "total": 142 }
 }
 ```
+
+- `items` + `metadata` — feature requests, devices under `/api/v1/devices`, audit log.
+- `items` + `page` + `per` + `total` (flat) — the `/api/v1/org/*` console endpoints.
+- `data` + `meta` (`page`, `perPage`, `total`, `totalPages`) — `GET /api/v1/analytics/events`.
+
+Each endpoint page states which envelope it returns and what its page-size parameter is called.

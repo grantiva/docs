@@ -1,0 +1,115 @@
+---
+title: "Console: analytics"
+description: "Attestation analytics, risk and compliance reports, and CSV export from the terminal"
+---
+
+`grantiva console analytics` is the analytics dashboard as five commands: an overview, the event log, a risk report, a compliance report, and a CSV export.
+
+All five need a key with `analytics:read`; `export` also needs `analytics:export`.
+
+Windows and event types the server would otherwise ignore are rejected up front, so a typo fails immediately instead of silently returning the default window.
+
+## `grantiva console analytics overview`
+
+Attestation totals, success rate, unique devices, average risk, and the latest events.
+
+```bash
+grantiva console analytics overview [--days N] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--days` | Window in days. Default 30. |
+
+```bash
+grantiva console analytics overview --days 7
+```
+
+<Note>
+The server computes the statistics over the most recent events in the window rather than over every event in it, so treat the rates as a sample of the window, not an exhaustive count.
+</Note>
+
+## `grantiva console analytics events`
+
+Page through the attestation event log.
+
+```bash
+grantiva console analytics events [--page N] [--per-page N] [--from ISO8601]
+                                 [--to ISO8601] [--device ID] [--type TYPE] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--page` | Page number, starting at 1. |
+| `--per-page` | Events per page, 1–200. Default 50. |
+| `--from` | Only events at or after this ISO 8601 timestamp, e.g. `2026-09-01T00:00:00Z`. |
+| `--to` | Only events at or before this ISO 8601 timestamp. |
+| `--device` | Only events for this device ID. |
+| `--type` | Only this event type. |
+
+Event types: `challenge_generated`, `attestation_validated`, `attestation_failed`, `suspicious_activity`, `token_issued`.
+
+```bash
+grantiva console analytics events --type attestation_failed \
+  --from 2026-09-01T00:00:00Z --per-page 200
+```
+
+## `grantiva console analytics risk`
+
+Risk distribution, critical-risk devices, and recent suspicious activity.
+
+```bash
+grantiva console analytics risk [--range 1d|7d|30d|90d] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--range` | Window. Default `7d`. |
+
+## `grantiva console analytics compliance`
+
+Compliance rate, violation counts, and the devices that are out of compliance.
+
+```bash
+grantiva console analytics compliance [--period 1d|7d|30d|90d] [--all] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--period` | Reporting period label. Default `30d`. |
+| `--all` | List every device, not just the non-compliant ones. |
+
+## `grantiva console analytics export`
+
+Export devices or events as CSV, to stdout or a file.
+
+```bash
+grantiva console analytics export --data devices|events
+                                 [--period 1d|7d|30d|90d] [--out PATH] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--data` | Which dataset: `devices` or `events`. Required. |
+| `--period` | Window for the events export. Default `30d`. Ignored for `devices`. |
+| `--out` | Write the CSV to this path instead of stdout. |
+
+The export is always CSV, up to 10,000 rows. Without `--out` the CSV goes to stdout, so redirection works:
+
+```bash
+grantiva console analytics export --data events --period 30d > events.csv
+```
+
+`--json` reports what was written rather than emitting the CSV, and therefore requires `--out`:
+
+```bash
+grantiva console analytics export --data devices --out devices.csv --json
+```
+
+Needs `analytics:export`.
+
+## Next steps
+
+- [Console overview](/cli/console) — auth, scopes, and shared conventions
+- [Risk scoring](/concepts/risk-scoring) — what the risk bands mean
+- [Analytics API](/api-reference/analytics/dashboard) — the same data over HTTP

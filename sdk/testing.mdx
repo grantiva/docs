@@ -40,18 +40,17 @@ Run through these five checks after your first `validateAttestation()` call:
     print(result.deviceIntelligence.riskScore) // Optional(12)
     ```
 
-    A score of `nil` on a physical device with a Pro plan indicates an issue — see [riskScore is nil on a real device](#riskscore-is-nil-on-a-real-device) below.
+    A score of `nil` on a physical device with a Pro plan indicates an issue — see [riskScore is nil on a real device](#riskscore-is-nil-on-a-real-device) below. `riskCategory` is populated on every plan, so use it when you only need the band.
   </Step>
 
-  <Step title="The JWT attest claim matches your environment">
-    Decode the JWT payload (Base64URL-decode the middle segment) and confirm the `attest` claim:
+  <Step title="You got a real JWT, not the API key placeholder">
+    In API key mode the SDK skips App Attest entirely and hands back the literal placeholder string `simulator-dev-token` instead of a JWT.
 
-    | Environment | Expected value |
-    |---|---|
-    | Physical device | `hardware` |
-    | Simulator (API key fallback) | `api_key` |
+    ```swift
+    print(result.token == "simulator-dev-token") // false on a real attestation
+    ```
 
-    If you see `api_key` on a real device, the SDK fell back to API key auth — check that you are not passing an `apiKey` parameter in your production initialization.
+    If this is `true` on a physical device, the SDK fell back to API key auth — check that your production initialization does not pass an `apiKey`.
   </Step>
 
   <Step title="Your app appears in the Grantiva dashboard">
@@ -68,32 +67,38 @@ Run through these five checks after your first `validateAttestation()` call:
 ```swift
 result.isValid                              // true
 result.token                                // "eyJhbGciOiJFUzI1NiIsInR5..."
-result.expiresAt                            // 2025-03-21 14:00:00 UTC
+result.expiresAt                            // 2026-03-21 14:00:00 UTC (1 hour out by default)
 
 result.deviceIntelligence.deviceId          // "d3f1a2b4-..."
-result.deviceIntelligence.riskScore         // 8   (0–100; nil on Free tier)
-result.deviceIntelligence.riskCategory      // "low"
+result.deviceIntelligence.riskScore         // Optional(8)  (0–100; nil on Free tier)
+result.deviceIntelligence.riskCategory      // RiskCategory.trusted
 result.deviceIntelligence.deviceIntegrity   // "uncompromised"
 result.deviceIntelligence.jailbreakDetected // false
 result.deviceIntelligence.attestationCount  // 1
 result.customClaims                         // ["plan": "pro", "env": "production"]
 ```
 
+`customClaims` values arrive as strings, whatever type you configured in the dashboard.
+
 ### Simulator (API key fallback)
+
+The SDK does not contact the attestation endpoint at all in API key mode. It returns a synthetic result built on-device, so these values are fixed:
 
 ```swift
 result.isValid                              // true
-result.token                                // "eyJhbGciOiJFUzI1NiIsInR5..."
-result.expiresAt                            // 2025-03-21 14:00:00 UTC
+result.token                                // "simulator-dev-token"  (a placeholder, not a JWT)
+result.expiresAt                            // one year out
 
-result.deviceIntelligence.deviceId          // "sim-..."  (prefixed to distinguish)
+result.deviceIntelligence.deviceId          // the SDK's local device identifier
 result.deviceIntelligence.riskScore         // nil        (not computed without hardware attestation)
-result.deviceIntelligence.riskCategory      // "unknown"
-result.deviceIntelligence.deviceIntegrity   // "simulated"
+result.deviceIntelligence.riskCategory      // RiskCategory.trusted
+result.deviceIntelligence.deviceIntegrity   // "api_key_mode"
 result.deviceIntelligence.jailbreakDetected // false
-result.deviceIntelligence.attestationCount  // 1
-result.customClaims                         // ["plan": "pro", "env": "development"]
+result.deviceIntelligence.attestationCount  // 0
+result.customClaims                         // [:]
 ```
+
+Flag and feedback requests made in this mode authenticate with the API key rather than the token.
 
 ---
 
@@ -103,20 +108,25 @@ After decoding the token (Base64URL-decode the middle segment), you will see som
 
 ```json
 {
-  "sub": "d3f1a2b4-8c3e-4f2a-9b1d-5e7f8a2c4d6e",
+  "sub": "AbCdEf01...",
+  "kid": "AbCdEf01...",
   "iss": "api.grantiva.io",
   "aud": "com.example.MyApp",
   "iat": 1742385600,
   "exp": 1742389200,
-  "attest": "hardware",
+  "device_id": "d3f1a2b4-8c3e-4f2a-9b1d-5e7f8a2c4d6e",
   "bundle_id": "com.example.MyApp",
   "team_id": "ABCDE12345",
-  "risk_score": 8,
-  "risk_category": "low",
   "device_integrity": "uncompromised",
-  "jailbreak_detected": false,
   "attestation_count": 1,
-  "plan": "pro"
+  "risk_score": 8,
+  "device_model": "iPhone15,2",
+  "os_version": "18.0",
+  "app_version": "1.4.0",
+  "first_seen": 1742299200,
+  "last_attestation": 1742385600,
+  "jailbreak_detected": false,
+  "custom_claims": { "plan": "pro" }
 }
 ```
 
@@ -124,36 +134,41 @@ After decoding the token (Base64URL-decode the middle segment), you will see som
 
 | Claim | Type | Description |
 |---|---|---|
-| `sub` | string | Unique device ID |
+| `sub` / `kid` | string | The device's App Attest key ID |
 | `iss` | string | Issuer — `api.grantiva.io` |
 | `aud` | string | Your Bundle ID |
 | `iat` / `exp` | number | Issued at / expiry (Unix timestamps) |
-| `attest` | string | `hardware` or `api_key` |
+| `device_id` | string | Grantiva's identifier for this device |
 | `bundle_id` | string | Your app's Bundle ID |
 | `team_id` | string | Your Apple Team ID |
-| `jailbreak_detected` | boolean | Always present |
 
 **Claims present on Pro and above:**
 
 | Claim | Type | Description |
 |---|---|---|
 | `risk_score` | number | 0–100 integer |
-| `risk_category` | string | `low`, `medium`, `high`, or `critical` |
-| `device_integrity` | string | `uncompromised`, `simulated`, or `compromised` |
+| `device_integrity` | string | Integrity status for the device |
 | `attestation_count` | number | Lifetime attestation count for this device |
+| `jailbreak_detected` | boolean | Whether jailbreak signals were detected |
+| `device_model`, `os_version`, `app_version` | string | Reported by the SDK at attestation time |
+| `first_seen`, `last_attestation` | number | Unix timestamps |
 
-**Custom claims** — any claims you have configured in the dashboard appear at the top level alongside the standard claims.
+Free-tier tokens carry only the always-present claims plus `custom_claims`. The numeric `risk_score` is withheld, but `riskCategory` is still returned on the `AttestationResult`.
+
+**Custom claims** — claims you configure in the dashboard are nested under the `custom_claims` object, not merged into the top level.
 
 ---
 
 ## Risk score reference
 
-| Score | Category | Suggested action |
-|---|---|---|
-| 0–20 | `low` | Trusted — proceed normally |
-| 21–50 | `medium` | Monitor — consider step-up verification |
-| 51–75 | `high` | Challenge — require additional confirmation |
-| 76–100 | `critical` | Block — device likely compromised |
+The SDK's `RiskCategory` has three cases. The dashboard splits the middle band further for its histograms, but the SDK and JWT only ever use these three:
+
+| Score | `RiskCategory` | Dashboard bucket | Suggested action |
+|---|---|---|---|
+| 0–20 | `.trusted` | low | Proceed normally |
+| 21–50 | `.suspicious` | medium | Monitor — consider step-up verification |
+| 51–75 | `.suspicious` | high | Challenge — require additional confirmation |
+| 76–100 | `.blocked` | critical | Block — device likely compromised |
 
 ---
 
@@ -234,11 +249,12 @@ catch GrantivaError.validationFailed {
 
 ### `challengeExpired`
 
-**Cause:** The server-issued challenge has a short TTL (typically 60 seconds). If the device's clock is significantly skewed, or the attestation process takes too long (e.g. slow network), the challenge may expire before the SDK submits the response.
+**Cause:** Challenges are single-use and expire **5 minutes** after issue. Pausing in the debugger mid-attestation, a badly skewed device clock, or a very slow network can outlive the challenge.
 
-**Fix:** The SDK retries automatically on `challengeExpired`. If you see this error bubbling up to your code, it means retries were exhausted. Check for:
-- Device clock sync issues (`Settings → General → Date & Time → Set Automatically`)
-- Network latency causing attestation submission to exceed 60 seconds
+**Fix:** The SDK requests a fresh challenge and retries. If this error reaches your code, the retry also failed. Check for:
+- Device clock sync issues (**Settings → General → Date & Time → Set Automatically**)
+- A breakpoint sitting between `generateKey` and the `/validate` call
+- Network latency pushing attestation submission past 5 minutes
 
 ---
 
@@ -254,7 +270,7 @@ catch GrantivaError.validationFailed {
 
 ### `tokenExpired` returned by your backend
 
-**Cause:** The JWT was issued with a limited TTL (default 1 hour). Your backend received a token that has already expired.
+**Cause:** The JWT is issued with a 1-hour TTL by default. Your backend received a token that has already expired. The SDK treats its cached token as expired 5 minutes early, so a genuinely expired token usually means the app held onto it rather than re-reading it.
 
 **Fix:** Call `refreshToken()` before sending the token to your backend, or catch the expired state in your backend and prompt the client to re-attest:
 
@@ -271,13 +287,15 @@ if !grantiva.isTokenValid() {
 ### `riskScore` is nil on a real device
 
 **Cause:** One of:
-1. Your account is on the **Free tier** — risk scoring requires Pro or above.
-2. The attestation used API key fallback instead of App Attest (check the `attest` JWT claim).
+1. Your account is on the **Free tier** — the numeric score requires Pro or above. `riskCategory` is still populated.
+2. The SDK is in API key mode, so no attestation happened.
+3. The result came from `refreshToken()` on a still-valid token, which returns placeholder device intelligence rather than re-reading it from the server.
 
 **Fix:**
 1. Check your plan in **Dashboard → Settings → Billing**.
 2. Confirm `result.deviceIntelligence.riskScore` is `nil` specifically (not `0`) — a score of `0` is a valid low-risk score, not an error.
-3. Confirm the JWT `attest` claim is `hardware`, not `api_key`.
+3. Confirm `result.token != "simulator-dev-token"` and that you are not passing an `apiKey` on device builds.
+4. Read device intelligence from a `validateAttestation()` result, not a `refreshToken()` one.
 
 ---
 

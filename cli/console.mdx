@@ -1,0 +1,129 @@
+---
+title: "Console commands"
+description: "Manage your Grantiva dashboard from the terminal"
+---
+
+`grantiva console` is the dashboard as a command tree. Everything you can do in the web dashboard — feature flags, apps, custom claims, devices, analytics, VRT review, release notes, feedback, support tickets, webhooks, alerts, API keys, team, the audit log, and org settings — has a subcommand, and every one of them takes `--json`.
+
+```bash
+grantiva console flags on dark_mode --env staging
+grantiva console devices list --risk-min 76
+grantiva console analytics export --data events --period 30d --out events.csv
+```
+
+## Areas
+
+<CardGroup cols={2}>
+  <Card title="Feature flags" icon="toggle-on" href="/cli/console-flags">
+    `flags`, `envs` — flags, environments, targeting rules, per-device overrides, dry-run evaluation, and a live SSE stream.
+  </Card>
+  <Card title="Apps, claims, devices" icon="mobile-screen" href="/cli/console-apps">
+    `apps`, `claims`, `devices` — register apps, author the custom claims minted into device JWTs, and inspect attested devices.
+  </Card>
+  <Card title="Analytics" icon="chart-line" href="/cli/console-analytics">
+    `analytics` — overview, event log, risk and compliance reports, CSV export.
+  </Card>
+  <Card title="VRT and releases" icon="images" href="/cli/console-vrt">
+    `vrt`, `releases` — review and approve visual regression runs, author What's New notes.
+  </Card>
+  <Card title="Feedback and support" icon="comments" href="/cli/console-feedback">
+    `feedback`, `support` — triage feature requests and work support tickets as the team.
+  </Card>
+  <Card title="Organization" icon="building" href="/cli/console-org">
+    `webhooks`, `alerts`, `keys`, `team`, `audit`, `org` — endpoints, risk alerts, API keys, members, audit log, plan and usage.
+  </Card>
+</CardGroup>
+
+## Authentication
+
+Console commands act as an API key. Sign in once:
+
+```bash
+grantiva auth login
+```
+
+Or set the key in the environment, which takes precedence over `~/.grantiva/auth.json`:
+
+```bash
+export GRANTIVA_API_KEY="gpat_..."
+export GRANTIVA_API_URL="https://api.grantiva.io"   # optional override
+```
+
+Without credentials, every console command fails with `Not authenticated. Run: grantiva auth login`.
+
+## Scopes
+
+Each command needs specific scopes on the key. A `403` names the missing one:
+
+```
+Permission denied: this API key is missing the 'flags:write' scope.
+Create a key with 'flags:write' in the dashboard under Settings → API Keys.
+```
+
+| Area | Scopes |
+|------|--------|
+| `flags`, `envs` | `flags:read`, `flags:write` |
+| `apps` | `apps:read`, `apps:write`, `apps:delete` |
+| `claims` | `claims:read`, `claims:write`, `claims:delete`, `claims:test` |
+| `devices` | `devices:read` |
+| `analytics` | `analytics:read`, `analytics:export` |
+| `vrt` | `vrt:read`, `vrt:write` |
+| `releases` | `release_notes:read`, `release_notes:write` |
+| `feedback`, `support` | `feedback:read`, `feedback:manage` |
+| `webhooks` | `webhooks:read`, `webhooks:write`, `webhooks:delete`, `webhooks:test` |
+| `alerts` | `alerts:read`, `alerts:write` |
+| `keys` | `keys:read`, `keys:write` |
+| `org` | `org:read`, `org:write` |
+| `team` | `admin:team` |
+| `audit` | `admin:audit` |
+| `org billing` | `admin:billing` |
+
+Mint a scoped key from the terminal with [`grantiva console keys create`](/cli/console-org#api-keys). A key can only create keys with scopes it holds itself.
+
+<Note>
+Not every 403 is a missing scope. The API also answers 403 for plan limits and for rules like "this key cannot grant scopes it does not hold". Those messages are shown verbatim rather than being rewritten into scope advice.
+</Note>
+
+## Conventions
+
+These hold across every console command.
+
+**`--json`** prints the result as one JSON document on stdout, and suppresses progress narration. `grantiva console flags watch --json` is the exception in shape: it emits NDJSON, one compact `{"event": …, "data": …}` document per line.
+
+**Destructive verbs prompt.** `delete`, `revoke`, and `remove` ask for confirmation on a TTY and refuse outright when stdin is not a TTY. Pass `--yes` to skip the prompt — it is required in CI.
+
+```bash
+grantiva console flags delete legacy_checkout --yes
+```
+
+**Resources are addressable by their human name.** Flags by `flag_key`, apps by bundle ID, claims by claim key, environments by slug. A UUID works everywhere the name does.
+
+**Bodies can come from files.** Anywhere a `--body`, `--rules`, `--external`, `--validation`, or `--conditions-json` option takes text, `@path` reads it from a file instead:
+
+```bash
+grantiva console releases create com.example.app 2.1.0 \
+  --title "Dark mode" --body @CHANGELOG-2.1.0.md --publish
+```
+
+**Rate limits surface as the server's own message.** A 429 prints the retry guidance, not a JSON envelope.
+
+## Opening the dashboard
+
+```bash
+grantiva console open              # dashboard home
+grantiva console open flags        # straight to feature flags
+grantiva console open --json       # print the URL instead of opening it
+```
+
+Areas: `home`, `flags`, `apps`, `claims`, `devices`, `analytics`, `vrt`, `releases`, `feedback`, `support`, `webhooks`, `alerts`, `keys`, `team`, `audit`, `settings`, `billing`.
+
+The URL matches the API the CLI is signed in to, so a key pointed at a development API opens the development dashboard.
+
+## Next steps
+
+- [Feature flags](/cli/console-flags)
+- [Apps, claims, and devices](/cli/console-apps)
+- [Analytics](/cli/console-analytics)
+- [VRT review and release notes](/cli/console-vrt)
+- [Feedback and support](/cli/console-feedback)
+- [Organization](/cli/console-org)

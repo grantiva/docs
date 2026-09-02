@@ -1,0 +1,245 @@
+---
+title: "Feedback Console API"
+description: "Staff-side feedback and support: triage, status, priority, and replies"
+---
+
+`/api/v1/org/feedback` and `/api/v1/org/support` are the staff side of the Feedback module — the surface the dashboard and the `grantiva` CLI use to triage what your users submitted through the SDK.
+
+## Authentication
+
+Both a dashboard session and an API key work:
+
+| Operation | Key scope | Session role |
+|-----------|-----------|--------------|
+| Read (list, get) | `feedback:read` | viewer+ |
+| Manage (status, priority, replies) | `feedback:manage` | member+ |
+
+`feedback:manage` is deliberately separate from `feedback:write` — end users hold `feedback:write` to submit and vote, staff hold `feedback:manage` to answer.
+
+Wire format on this surface is snake_case.
+
+---
+
+## List feature requests
+
+```
+GET /api/v1/org/feedback
+```
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `status` | string | — | One of `pending`, `open`, `planned`, `in_progress`, `shipped`, `declined`, `duplicate`. Unknown values return `400` |
+| `app_id` | UUID | — | Restrict to one app. A non-UUID returns `400` |
+| `search` | string | — | Case-insensitive substring match on title or description |
+| `sort` | string | `votes` | `votes`, `newest`, or `oldest`. Unknown values return `400` |
+| `page` | int | 1 | Page number |
+| `per` | int | 20 | Page size, 1–100 |
+
+### Response
+
+```json
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "app_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "title": "Dark Mode Support",
+      "description": "Please add dark mode...",
+      "status": "open",
+      "submitter_id": "user_123",
+      "vote_count": 42,
+      "comment_count": 5,
+      "created_at": "2026-03-01T12:00:00Z",
+      "updated_at": "2026-03-10T08:00:00Z"
+    }
+  ],
+  "page": 1,
+  "per": 20,
+  "total": 42
+}
+```
+
+---
+
+## Get a feature request
+
+```
+GET /api/v1/org/feedback/:featureId
+```
+
+Returns the request plus its comments, oldest first.
+
+```json
+{
+  "feature": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "app_id": null,
+    "title": "Dark Mode Support",
+    "description": "Please add dark mode...",
+    "status": "open",
+    "submitter_id": "user_123",
+    "vote_count": 42,
+    "comment_count": 1,
+    "created_at": "2026-03-01T12:00:00Z",
+    "updated_at": "2026-03-10T08:00:00Z"
+  },
+  "comments": [
+    {
+      "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+      "author_id": "user_123",
+      "author_type": "user",
+      "body": "Great idea!",
+      "created_at": "2026-03-02T09:00:00Z"
+    }
+  ]
+}
+```
+
+---
+
+## Set feature request status
+
+```
+POST /api/v1/org/feedback/:featureId/status
+```
+
+```json
+{ "status": "planned" }
+```
+
+Returns the updated feature request object. An unrecognized status returns `400` listing the accepted values.
+
+---
+
+## Comment as staff
+
+```
+POST /api/v1/org/feedback/:featureId/comments
+```
+
+```json
+{ "body": "We're planning this for the next release." }
+```
+
+`201 Created` with the comment, stored with `author_type: "admin"`. The body must be non-empty and at most 5,000 characters. Devices subscribed to the request's push channel are notified.
+
+---
+
+## List support tickets
+
+```
+GET /api/v1/org/support
+```
+
+Tickets are sorted by last update, newest first.
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `status` | string | — | `open`, `awaiting_reply`, `resolved`, or `closed`. Unknown values return `400` |
+| `priority` | string | — | `low`, `normal`, `high`, or `urgent`. Unknown values return `400` |
+| `app_id` | UUID | — | Restrict to one app |
+| `search` | string | — | Case-insensitive substring match on subject or submitter email |
+| `page` | int | 1 | Page number |
+| `per` | int | 20 | Page size, 1–100 |
+
+### Response
+
+```json
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "app_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "subject": "App crashes on launch",
+      "status": "open",
+      "priority": "normal",
+      "submitter_id": "user_123",
+      "submitter_email": "user@example.com",
+      "message_count": 3,
+      "created_at": "2026-03-10T12:00:00Z",
+      "updated_at": "2026-03-10T14:00:00Z"
+    }
+  ],
+  "page": 1,
+  "per": 20,
+  "total": 1
+}
+```
+
+---
+
+## Get a ticket
+
+```
+GET /api/v1/org/support/:ticketId
+```
+
+```json
+{
+  "ticket": { "…": "same shape as the list entry" },
+  "messages": [
+    {
+      "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+      "author_id": "user_123",
+      "author_type": "user",
+      "body": "After updating to v2.1...",
+      "created_at": "2026-03-10T12:00:00Z"
+    }
+  ]
+}
+```
+
+Messages are oldest first.
+
+---
+
+## Set ticket status and priority
+
+```
+POST /api/v1/org/support/:ticketId/status
+POST /api/v1/org/support/:ticketId/priority
+```
+
+```json
+{ "status": "resolved" }
+```
+
+```json
+{ "priority": "high" }
+```
+
+Both return the updated ticket object. Moving a ticket to `resolved` emails the submitter.
+
+---
+
+## Reply as staff
+
+```
+POST /api/v1/org/support/:ticketId/messages
+```
+
+```json
+{ "body": "We've shipped a fix in 2.1.1 — please update and let us know." }
+```
+
+`201 Created` with the message, stored with `author_type: "admin"`. The body must be non-empty and at most 10,000 characters. Posting a staff reply moves the ticket to `awaiting_reply` and emails the submitter.
+
+---
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Invalid `:featureId`/`:ticketId`, invalid filter value, or an empty/oversized body |
+| 401 | No session and no API key |
+| 403 | Key lacks the required scope, or the session role is too low |
+| 404 | No such feature request or ticket in your organization |
+
+## See also
+
+- [Feature Requests](/api-reference/feedback/feature-requests) — the SDK-facing submission API
+- [Support Tickets](/api-reference/feedback/support-tickets)

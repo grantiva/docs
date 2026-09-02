@@ -3,11 +3,13 @@ title: "Publish"
 description: "Publish an event to channels and fan out APNs pushes"
 ---
 
-Backend-facing endpoint, authenticated with the app's **secret key** (`grv_sec_`, sent as `Authorization: Bearer` or `X-API-Key`). Never ship the secret key in a client app.
+Backend-facing endpoint, authenticated with the app's **secret key** (`grv_sec_`, sent as `X-API-Key` or `Authorization: Bearer`). Never ship the secret key in a client app — a public key on this route returns `403`.
 
 ```
 POST /v1/apps/:appID/publish
 ```
+
+`event` is your own event name, 1–100 characters. Publish to one channel with `channel` or up to 100 with `channels`.
 
 ## Alert push
 
@@ -66,3 +68,12 @@ Grantiva sets `apns-push-type: liveactivity`, topic `<bundleID>.push-type.liveac
 - Publishing before the app's APNs credentials are configured returns **409**.
 
 Fan-out is concurrent (capped at 16 in-flight APNs sends) and synchronous within the request.
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Neither `channel` nor `channels` given, more than 100 channels, an invalid channel name, an `event` outside 1–100 characters, `push.type` not `alert`/`liveactivity`, `push.liveActivityEvent` not `start`/`update`/`end`, or a Live Activity push missing `contentState` (or `attributesType`/`attributes` on `start`) |
+| 401 | Missing or invalid API key |
+| 403 | A public key was used — publishing requires the secret key |
+| 409 | APNs credentials are not configured for this app |

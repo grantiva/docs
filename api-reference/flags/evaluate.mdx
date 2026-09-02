@@ -1,0 +1,109 @@
+---
+title: "Test an Evaluation"
+description: "Dry-run a flag against a simulated device and see which rules matched"
+---
+
+Evaluates a single flag against a device context you supply, and returns the resolved value plus a trace of every rule that was considered. Nothing is persisted — no evaluation is recorded, and no device state changes.
+
+## Request
+
+```
+POST /api/v1/flags/:flagId/evaluate
+```
+
+`:flagId` must be the flag's UUID.
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key. See [Authentication](/api-reference/authentication) |
+
+Calls count against the `flags` rate-limit bucket.
+
+### Body
+
+```json
+{
+  "environment": "production",
+  "deviceModel": "iPhone16,1",
+  "osVersion": "18.1.2",
+  "appVersion": "2.1.0",
+  "deviceId": "abc123",
+  "riskScore": 12,
+  "locale": "en_US",
+  "country": "US",
+  "userId": "user_123",
+  "attestationStatus": "attested",
+  "custom": { "beta-group": "internal" }
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `environment` | string | No | Environment slug, default `production`. An unknown slug falls back to the flag's stored production value |
+| `deviceModel` | string | No | Matches the `device_model` attribute |
+| `osVersion` | string | No | Matches `os_version` |
+| `appVersion` | string | No | Matches `app_version` |
+| `deviceId` | string | No | Matches `device_id`, and buckets percentage rollouts |
+| `riskScore` | integer | No | Matches `risk_score` |
+| `locale` | string | No | Matches `locale` |
+| `country` | string | No | Matches `country` |
+| `userId` | string | No | Matches `user_id` |
+| `attestationStatus` | string | No | Matches `attestation_status` |
+| `custom` | object | No | String map matching `custom.<key>` attributes |
+
+## Response
+
+```json
+{
+  "flagKey": "dark_mode",
+  "flagId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "environment": "production",
+  "resolvedValue": "true",
+  "valueType": "boolean",
+  "matchedRule": "Beta testers on iOS 18+",
+  "isDefault": false,
+  "trace": [
+    {
+      "ruleName": "Beta testers on iOS 18+",
+      "ruleId": "550e8400-e29b-41d4-a716-446655440000",
+      "priority": 0,
+      "matched": true,
+      "rolloutPercentage": 50,
+      "passedRollout": true,
+      "conditions": [
+        {
+          "attribute": "os_version",
+          "operator": "gte",
+          "expected": "18.0",
+          "actual": "18.1.2",
+          "passed": true
+        }
+      ],
+      "value": "true"
+    }
+  ]
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `resolvedValue` | string | The value the flag would return, as its raw string form |
+| `valueType` | string | `boolean`, `integer`, `double`, `string`, or `json` |
+| `matchedRule` | string \| null | Name of the first rule that matched, or `null` when none did |
+| `isDefault` | boolean | `true` when no rule matched and the environment default was used |
+| `trace` | array | One entry per active rule, in priority order, including rules that did not match |
+| `trace[].conditions[].actual` | string \| null | The value read from the simulated context; `null` when the context omitted that attribute, which fails the condition |
+
+<Note>Per-device overrides are not applied here — the trace covers rules and the environment default only. To confirm what a specific device receives, call [`GET /api/v1/flags`](/api-reference/flags/get-flags) with that device's `X-Device-ID`.</Note>
+
+## Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | `:flagId` is not a UUID |
+| 404 | No such flag in your organization |
+| 429 | `flags` bucket rate limit exceeded |

@@ -1,0 +1,180 @@
+---
+title: "Release Notes"
+description: "Author the What's New notes your app shows after an update"
+---
+
+Release notes are authored per app and per version. Once published, the SDK shows a note to a device only when the note's version is above the version the device originally installed and at or below the version it runs now — so an upgrade reveals the notes it skipped past, and a fresh install sees nothing.
+
+## Authentication
+
+These endpoints accept either a dashboard session cookie or a server API key sent as `Authorization: Bearer <key>`.
+
+| Endpoint | Session role | Key scope |
+|----------|--------------|-----------|
+| `GET /api/v1/org/release-notes` | Any member | `release_notes:read` |
+| `GET /api/v1/org/release-notes/:noteId` | Any member | `release_notes:read` |
+| `POST /api/v1/org/release-notes` | Member | `release_notes:write` |
+| `PATCH /api/v1/org/release-notes/:noteId` | Member | `release_notes:write` |
+| `DELETE /api/v1/org/release-notes/:noteId` | Member | `release_notes:write` |
+| `POST /api/v1/org/release-notes/:noteId/publish` | Member | `release_notes:write` |
+| `POST /api/v1/org/release-notes/:noteId/unpublish` | Member | `release_notes:write` |
+
+<Note>A note belonging to another organization returns `404`, never `403` — you cannot tell "not yours" from "not there".</Note>
+
+## The release note object
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "appId": "661f9511-f3ac-52e5-b827-557766551111",
+  "version": "2.1.0",
+  "title": "Faster sync and dark mode",
+  "body": "- Sync is 3x faster\n- Dark mode everywhere",
+  "isPublished": true,
+  "publishedAt": "2026-07-26T12:00:00Z",
+  "createdAt": "2026-07-20T09:00:00Z",
+  "updatedAt": "2026-07-26T12:00:00Z"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `appId` | string (UUID) | The app this note belongs to |
+| `version` | string | App version the note describes, e.g. `2.1.0` |
+| `isPublished` | boolean | Only published notes are delivered to devices |
+| `publishedAt` | string \| null | Set on publish, cleared on unpublish |
+
+---
+
+## List release notes
+
+```
+GET /api/v1/org/release-notes
+```
+
+Paginated, sorted by creation date descending (authoring order, not version order).
+
+**Query parameters**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `page` | 1 | Page number |
+| `per` | 20 | Items per page (max 100) |
+| `appId` | — | Filter to one app (UUID) |
+
+**Response**
+
+```json
+{
+  "items": [ { "id": "550e8400-...", "version": "2.1.0", "...": "..." } ],
+  "metadata": { "page": 1, "per": 20, "total": 14 }
+}
+```
+
+---
+
+## Get a release note
+
+```
+GET /api/v1/org/release-notes/:noteId
+```
+
+**Response** — `200 OK` — the release note object.
+
+---
+
+## Create a release note
+
+```
+POST /api/v1/org/release-notes
+```
+
+**Request body**
+
+```json
+{
+  "appId": "661f9511-f3ac-52e5-b827-557766551111",
+  "version": "2.1.0",
+  "title": "Faster sync and dark mode",
+  "body": "- Sync is 3x faster\n- Dark mode everywhere",
+  "isPublished": false
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `appId` | string (UUID) | Yes | An app in your organization |
+| `version` | string | Yes | Max 64 characters, and must parse as a version number (`2.1.0`, `1.0`, `2.1.3-beta`) |
+| `title` | string | Yes | Max 200 characters |
+| `body` | string | Yes | Max 20,000 characters |
+| `isPublished` | boolean | No | Publish immediately. Defaults to `false` |
+
+**Response** — `201 Created` — the release note object.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Missing or over-long `version`/`title`/`body`, or a `version` that is not a recognizable version number |
+| 404 | App not found in this organization |
+| 409 | A release note already exists for that app and version |
+
+---
+
+## Update a release note
+
+```
+PATCH /api/v1/org/release-notes/:noteId
+```
+
+All fields are optional. Publish state is not settable here — use the publish and unpublish routes so `publishedAt` stays consistent.
+
+**Request body**
+
+```json
+{
+  "version": "2.1.1",
+  "title": "Faster sync",
+  "body": "- Sync is 3x faster"
+}
+```
+
+**Response** — `200 OK` — the updated release note.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Validation failed, as for create |
+| 404 | Note not found in this organization |
+| 409 | Another note for that app already uses the new version |
+
+---
+
+## Delete a release note
+
+```
+DELETE /api/v1/org/release-notes/:noteId
+```
+
+Also removes its view records.
+
+**Response** — `204 No Content`
+
+---
+
+## Publish and unpublish
+
+```
+POST /api/v1/org/release-notes/:noteId/publish
+POST /api/v1/org/release-notes/:noteId/unpublish
+```
+
+Both are idempotent and return the release note object with `200 OK`. Unpublishing clears `publishedAt`; seen-state is kept, so a note that is unpublished and republished is not re-shown to devices that already read it.
+
+---
+
+## See also
+
+- [Organization Settings](/api-reference/org/settings)
+- [API Keys](/api-reference/org/api-keys)

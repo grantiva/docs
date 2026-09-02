@@ -7,46 +7,84 @@ Custom claims let you embed additional data in the JWT returned by attestation. 
 
 ## Claim types
 
-| Type | Description | Example |
-|------|-------------|---------|
-| **Static** | Fixed value for all devices | `"app_version": "2.0"` |
-| **Conditional** | Value based on device properties | Risk score > 50 → `"restricted": true` |
-| **Dynamic** | Computed from expressions | `"days_since_first_seen": 42` |
-| **External** | Fetched from your API at attestation time | User subscription status |
+| Type | `claim_type` | Description | Available on |
+|------|--------------|-------------|--------------|
+| **Static** | `static` | The same fixed value for every device | All plans |
+| **Conditional** | `conditional` | A value chosen by rules over device properties — risk score, jailbreak status, attestation count | Pro and above |
+| **Dynamic** | `dynamic` | A value computed from an expression over the device profile | Pro and above |
+| **External** | `external` | Fetched from your own API at attestation time | Enterprise only |
 
-External claims are available on Enterprise plans only.
+Data types are `string`, `number`, `boolean`, `array`, `object`, and `date`.
 
 <Note>
-`subscription` is a **reserved claim key**, managed by Grantiva's [subscription entitlement ingestion](/concepts/subscription-claims). Creating a custom claim named `subscription` returns a 400.
+The Free plan allows **static claims only**. Creating a conditional, dynamic, or external claim on Free returns a 403.
 </Note>
+
+<Note>
+`subscription` is a **reserved claim key**, managed by Grantiva's [subscription entitlement ingestion](/concepts/subscription-claims). Creating a custom claim named `subscription` — in any casing — returns a 400.
+</Note>
+
+## Tier limits
+
+| Plan | Max active claims | Types allowed |
+|------|------------------:|---------------|
+| Free | 1 | Static |
+| Pro | 5 | Static, conditional, dynamic |
+| Business | 10 | Static, conditional, dynamic |
+| Enterprise | 20 | Static, conditional, dynamic, external |
+
+The limit counts **active** claims only — deactivating a claim frees a slot without deleting it.
 
 ## Managing claims
 
-Claims are managed from the [dashboard](https://grantiva.io/dashboard) or via the API.
-
 ### Dashboard
 
-Go to **Settings > Custom Claims** to create, edit, reorder, and test claims.
+Go to **Custom Claims** in the Configure section of the sidebar. From there you can add a claim, edit one, reorder them, and delete. Each claim carries a key, display name, description, data type, priority, and type-specific configuration.
+
+Claim types your plan doesn't include are shown with a plan badge and raise an upgrade prompt when selected.
 
 ### API
 
+Claims are managed over `/api/v1/org/claims`, authenticated with an [organization API key](/api-reference/org/api-keys) or a dashboard session. Wire keys are `snake_case`.
+
 ```bash
-# Create a claim
-curl -X POST https://api.grantiva.io/api/v1/claims \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X POST https://api.grantiva.io/api/v1/org/claims \
+  -H "Authorization: Bearer aat_YOUR_ORG_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "claimKey": "user_tier",
-    "claimName": "User Tier",
-    "claimType": "static",
-    "dataType": "string",
-    "staticValue": "premium"
+    "claim_key": "user_tier",
+    "claim_name": "User Tier",
+    "claim_type": "static",
+    "data_type": "string",
+    "static_value": "premium"
   }'
 ```
 
+| Endpoint | Purpose | Required scope |
+|----------|---------|----------------|
+| `GET /api/v1/org/claims` | List claims in priority order | `claims:read` |
+| `POST /api/v1/org/claims` | Create a claim | `claims:write` |
+| `PUT /api/v1/org/claims/:ref` | Update a claim | `claims:write` |
+| `PUT /api/v1/org/claims/reorder` | Set evaluation order | `claims:write` |
+| `DELETE /api/v1/org/claims/:ref` | Delete a claim | `claims:delete` |
+| `POST /api/v1/org/claims/test` | Evaluate an unsaved definition | `claims:test` |
+| `POST /api/v1/org/claims/:ref/preview` | Evaluate a saved claim | `claims:test` |
+
+`:ref` accepts either the claim's UUID or its claim key.
+
+<Warning>
+`claim_key`, `claim_type`, and `data_type` are **immutable** after creation. To change any of them, delete the claim and create a new one.
+</Warning>
+
+See the [Custom Claims API reference](/api-reference/claims) for the full field list.
+
+## Evaluation order
+
+Claims are evaluated in ascending `priority`, then by key. A claim whose evaluation fails or produces no value is **silently dropped from the token** — it never fails the attestation. Your backend should treat a missing claim as a normal case.
+
 ## Reading claims
 
-Claims appear in the attestation result:
+In the attestation result:
 
 ```swift
 let result = try await grantiva.validateAttestation()
@@ -67,27 +105,38 @@ And in the decoded JWT on your backend:
 }
 ```
 
-## Tier limits
-
-| Tier | Max claims |
-|------|-----------|
-| Free | 1 (static only) |
-| Pro | 5 |
-| Business | 10 |
-| Enterprise | 20 |
+<Warning>
+The `customClaims` map in the HTTP response is a flat string-to-string map — nested objects are stringified. For structured claims such as `subscription`, read the **decoded JWT** instead.
+</Warning>
 
 ## Testing claims
 
-Use the claim test endpoint to preview how a claim evaluates without performing a real attestation:
+Preview how a claim evaluates without performing a real attestation:
 
 ```bash
-curl -X POST https://api.grantiva.io/api/v1/claims/test \
-  -H "Authorization: Bearer YOUR_TOKEN" \
+curl -X POST https://api.grantiva.io/api/v1/org/claims/test \
+  -H "Authorization: Bearer aat_YOUR_ORG_KEY" \
   -H "Content-Type: application/json" \
   -d '{
-    "claimConfiguration": { "claimKey": "test", "claimType": "conditional", ... },
-    "testContext": {
-      "deviceProfile": { "riskScore": 75, "jailbreakDetected": true }
+    "claim": {
+      "claim_key": "restricted",
+      "claim_name": "Restricted",
+      "claim_type": "conditional",
+      "data_type": "boolean",
+      "conditional_rules": { "...": "..." }
+    },
+    "context": {
+      "device": {
+        "risk_score": 75,
+        "jailbreak_detected": true,
+        "device_model": "iPhone15,2",
+        "os_version": "18.0",
+        "country": "US"
+      }
     }
   }'
 ```
+
+The response gives you `claim_key`, `evaluated_value`, `data_type`, `evaluation_time_ms`, and any `errors`. `POST /api/v1/org/claims/:ref/preview` takes just the `context` object and evaluates the saved claim.
+
+Testing bypasses tier claim limits, but testing an external claim still requires Enterprise — evaluation makes a real outbound call to your configured endpoint.

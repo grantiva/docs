@@ -1,0 +1,98 @@
+---
+title: "Settings, keys, and audit log"
+description: "Organization settings, notification preferences, API keys, and the audit trail"
+---
+
+## Organization settings
+
+**Settings** in the sidebar footer covers everything organization-wide.
+
+### Organization details
+
+Your organization's **name** and **slug**. The name is also what your JWT `aud` claim carries, and the lowercased name is what the default `iss` is built from — see [Issuer and audience](/concepts/jwt-claims#issuer-and-audience).
+
+### Notification preferences
+
+Per-organization email toggles. Turning one off stops that email for everyone in the organization.
+
+| Preference | Sends when |
+|------------|-----------|
+| New feature request | A user files a feature request |
+| Vote threshold | A feature request crosses your configured vote count |
+| Feature status change | A request's status changes |
+| Feature comment | Someone comments on a request |
+| New support ticket | A user opens a ticket |
+| Ticket admin reply | Your team replies to a ticket |
+| Ticket resolved | A ticket is resolved |
+| Ticket user reply | A user replies to a ticket |
+| Flag toggle | A feature flag is switched on or off |
+| Team invite | An invite you sent is accepted |
+| Usage alert | You cross a MAD threshold |
+
+### Attestation failure-rate alert
+
+Set a failure-rate threshold and Grantiva emails you when your attestation failure rate over the last hour exceeds it. The check runs every 15 minutes, only fires above a minimum attestation volume so a handful of requests can't trip it, and has a **4-hour cooldown** between alerts for the same organization.
+
+### Danger zone
+
+Deleting the organization requires typing its slug to confirm, and is restricted to the owner. It removes all associated data.
+
+## API keys
+
+**API Keys** issues server-to-server credentials for backend integrations — the analytics API, the CLI, flag and claim management. They are never for shipping in a client app.
+
+| Prefix | Key type |
+|--------|----------|
+| `aat_` | Organization key |
+| `gpat_` | Personal key |
+
+Creating a key needs a name (up to 100 characters), at least one scope, and optionally an ISO-8601 expiry. The **secret is shown once** and stored hashed — there is no way to recover it later.
+
+Scopes bound what a key can do, granted per area:
+
+| Area | Scopes |
+|------|--------|
+| Analytics | `analytics:read`, `analytics:export`, `analytics:realtime` |
+| Devices | `devices:read`, `devices:write`, `devices:delete` |
+| Custom claims | `claims:read`, `claims:write`, `claims:delete`, `claims:test` |
+| Apps | `apps:read`, `apps:write`, `apps:delete` |
+| Feature flags | `flags:read`, `flags:write` |
+| Feedback and support | `feedback:read`, `feedback:write`, `feedback:manage` |
+| Visual testing | `vrt:read`, `vrt:write` |
+| Release notes | `release_notes:read`, `release_notes:write` |
+| Webhooks | `webhooks:read`, `webhooks:write`, `webhooks:delete`, `webhooks:test` |
+| Organization | `org:read`, `org:write`, `alerts:read`, `alerts:write`, `keys:read`, `keys:write` |
+
+<Note>
+A key can only grant scopes its creator already holds. Rotate a key to issue a fresh secret while keeping its name and scopes; revoke to disable it permanently. Both are audited.
+</Note>
+
+API keys require a paid plan. See the [API keys reference](/api-reference/org/api-keys).
+
+## Audit log
+
+**Audit Log** records every security-relevant action, newest first, searchable across the action name, the actor's email, and the resource type. Actions are named `resource.verb`.
+
+| Area | Actions |
+|------|---------|
+| Team | `invite.created`, `invite.revoked`, `invite.accepted`, `member.invited`, `member.removed` |
+| API keys | `apikey.created`, `apikey.rotated`, `apikey.revoked` |
+| Apps | `app.created`, `app.updated`, `app.activated`, `app.deactivated`, `app.deleted`, `app.primary_set` |
+| Custom claims | `claim.created`, `claim.updated`, `claim.reordered`, `claim.deleted` |
+| Feature flags | `flag.created`, `flag.updated`, `flag.toggled`, `flag.deleted`, `flag.rule_*`, `flag.override_*`, `flag.environment_*` |
+| Webhooks | `webhook.created`, `webhook.updated`, `webhook.deleted`, `webhook.delivery_retry` |
+| Risk alerts | `risk_alert_rule.created`, `risk_alert_rule.updated`, `risk_alert_rule.deleted` |
+| Billing | `billing.upgrade_initiated`, `billing.downgrade_request`, `billing.downgrade`, `billing.cancel_request`, `billing.subscription_cancelled` |
+| Organization | `org.settings_updated`, `org.notification_preferences_updated`, `org.entitlement_config_updated`, `settings.updated` |
+| Feedback and support | `feedback.status_changed`, `feedback.comment_added`, `support.status_changed`, `support.priority_changed`, `support.reply_added` |
+| Visual testing | `vrt.run_approved`, `vrt.run_rejected`, `vrt.screen_reviewed`, `vrt.screen_status_updated` |
+| Release notes | `release_note.created`, `release_note.updated`, `release_note.published`, `release_note.unpublished`, `release_note.deleted` |
+| Account | `user.login`, `user.logout`, `user.passkey_login`, `user.profile_updated`, `user.email_change_requested`, `user.email_changed`, `user.password_reset_requested`, `user.password_reset`, `user.cli_login`, `user.cli_authorized`, `account.deleted` |
+
+Entries carry the actor, the resource type and id, and action-specific metadata — the email on an invite, the old and new tier on a billing change, the URL on a webhook change.
+
+Read the log through the [audit log API](/api-reference/org/settings#audit-log) as well as the dashboard.
+
+## Profile
+
+**Profile** covers your own account: the email you sign in with, your role badge, changing your email (which sends a confirmation link to the new address), and changing your password.

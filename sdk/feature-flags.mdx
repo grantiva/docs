@@ -5,6 +5,8 @@ description: "Toggle features remotely with environment-aware flags"
 
 Feature flags let you control feature rollout from the Grantiva dashboard without app updates. Access them via `grantiva.flags`.
 
+`FlagService` is an `actor`, so every member is reached with `await`.
+
 <Note>
 Flag endpoints require authentication: run `validateAttestation()` once before reading flags (the SDK then attaches the attestation JWT automatically). In the Simulator, initialize the SDK with an API key — see [Simulator Setup](/simulator-setup). Requests without either receive a 401.
 </Note>
@@ -19,7 +21,7 @@ if flags["dark_mode"]?.boolValue == true {
 }
 ```
 
-Flags are cached in memory for 5 minutes by default. See [Cache control](#cache-control) to configure the TTL.
+Flags are cached in memory for 5 minutes. See [Cache control](#cache-control).
 
 ## Typed accessors
 
@@ -54,34 +56,34 @@ if let value = try await grantiva.flags.value(for: "feature_x") {
 
 ## Environments
 
-Flags can be scoped to different environments:
+Flags can hold a different value per environment. `FlagEnvironment` has three cases — `.development`, `.staging`, and `.production` — and both flag reads and the live stream are scoped to the service's current environment:
 
 ```swift
-grantiva.flags.environment = .staging  // .development, .staging, .production
-let flags = try await grantiva.flags.getFlags(forceRefresh: true)
+let environment = await grantiva.flags.environment  // .production
 ```
 
-Default is `.production`.
+The SDK evaluates against `.production`. Use per-environment values in the dashboard to vary behaviour between your builds.
+
+<Note>
+`environment` and `cacheTTL` are actor-isolated properties with no setter on the public API, so app code can read them but not change them. If you need staging evaluation or a different TTL on device, [let us know](mailto:support@grantiva.io).
+</Note>
 
 ## Cache control
 
-Flags are cached for 5 minutes by default. Adjust the TTL at any point after initialization:
+Flags are cached in memory for 5 minutes (`cacheTTL`, 300 seconds).
 
 ```swift
-// 30-second TTL — fast propagation for kill-switches
-grantiva.flags.cacheTTL = 30
+// Bypass the cache for one read
+let fresh = try await grantiva.flags.getFlags(forceRefresh: true)
 
-// Disable caching entirely — always fetch fresh values
-grantiva.flags.cacheTTL = 0
-
-// Force refresh on next fetch
+// Drop the cache so the next fetch goes to the network
 await grantiva.flags.refresh()
 
 // Clear all cached flag data
 await grantiva.flags.clearCache()
 ```
 
-The cache is automatically cleared when user identity changes via `grantiva.identify()`.
+`refresh()` and `clearCache()` do the same thing today; `clearCache()` is what the SDK calls internally. The cache is cleared automatically when user identity changes via `grantiva.identify(_:)` or `grantiva.clearIdentity()`, and a live update from the stream replaces the cache in place.
 
 ## Live updates (SSE)
 
@@ -92,12 +94,34 @@ A few behaviors worth knowing (SDK 2.0.6+):
 - The server emits a `: keepalive` comment every 20 seconds; the SDK's idle timeout is 75 seconds (~3 missed keepalives), so dead connections are detected and reconnected without churning on healthy quiet streams.
 - Reconnect backoff resets after a healthy connection (60s+ uptime) drops, so devices on flaky networks don't accumulate permanent delays.
 - The stream is scoped to the current `environment`.
+- On iOS the SDK closes the stream when the app backgrounds and reopens it on foreground. `clearStoredData()` stops it.
+
+### React to live updates
+
+Register a handler to be told when the stream delivers new values:
+
+```swift
+await grantiva.flags.setUpdateHandler { flags in
+    // Called off the main thread
+    Task { @MainActor in
+        self.darkMode = flags["dark_mode"]?.boolValue ?? false
+    }
+}
+```
+
+The closure is `@Sendable` and is invoked off the main thread — hop to the main actor before touching UI state. Pass `nil` to remove the handler:
+
+```swift
+await grantiva.flags.setUpdateHandler(nil)
+```
+
+Streaming starts automatically after a successful `validateAttestation()`. If the stream is unavailable, reads still work — they just fall back to the cache TTL.
 
 ## Tier limits
 
-| Tier | Max flags |
-|------|-----------|
-| Free | 10 |
-| Pro | 50/app |
-| Business | 200/app |
-| Enterprise | Unlimited |
+| Tier | Flags per app | Environments | Targeting rules per flag |
+|------|---------------|--------------|--------------------------|
+| Free | 10 | 1 | 0 |
+| Pro | 50 | 3 | 5 |
+| Business | 200 | 10 | 20 |
+| Enterprise | Unlimited | Unlimited | Unlimited |

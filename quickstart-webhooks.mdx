@@ -3,60 +3,74 @@ title: "Webhooks Quick Start"
 description: "Receive real-time notifications for device attestation events"
 ---
 
-<Info>Webhooks are available on **Pro**, **Business**, and **Enterprise** plans.</Info>
+<Info>Webhooks are available on **Pro**, **Business**, and **Enterprise** plans. Endpoint limits are 3 on Pro, 10 on Business, and unlimited on Enterprise.</Info>
 
 ## 1. Create an endpoint
 
-In the dashboard, go to **Settings > Webhooks** and click **Create Endpoint**.
+In the dashboard, go to **Webhooks** under Configure and click **Create Endpoint**.
 
-Enter your HTTPS endpoint URL and select which events to listen for:
+Enter your endpoint URL — use HTTPS — give it a label, and tick the events you want:
 
-| Event | Description |
-|-------|-------------|
-| `device.new` | First attestation from a new device |
-| `device.high_risk` | Device exceeds risk threshold |
-| `device.attestation_failed` | Attestation validation failed |
-| `attestation.anomaly` | Unusual attestation pattern |
+| Event | Fires when |
+|-------|------------|
+| `device.new` | A device's first attestation |
+| `device.attested.first` | The first device ever attests for one of your apps |
+| `device.high_risk` | A device's score exceeds your threshold |
+| `device.attestation_failed` | Attestation validation fails |
+| `attestation.anomaly` | Anomalies are detected on an attestation |
+| `flag.created` / `flag.updated` / `flag.deleted` | A feature flag changes |
+| `subscription.changed` / `.expired` / `.refunded` | An entitlement changes |
 
-Grantiva generates a signing secret (`whsec_...`) — save this for signature verification.
+Grantiva generates a signing secret (`whsec_...`) and shows it **once** — save it now.
 
 ## 2. Handle webhook events
 
+Sign the **raw request body**, not a re-serialized copy of the parsed JSON. Re-serializing can change key order or spacing and the signature will not match.
+
 ```javascript
-// Node.js / Express example
+// Node.js / Express
 const crypto = require('crypto');
 
-app.post('/webhooks/grantiva', (req, res) => {
-  // Verify signature
-  const signature = req.headers['x-grantiva-signature'];
-  const expected = 'sha256=' + crypto
-    .createHmac('sha256', process.env.WEBHOOK_SECRET)
-    .update(JSON.stringify(req.body))
-    .digest('hex');
+// Capture the raw body for this route so the signature check sees the exact bytes.
+app.post(
+  '/webhooks/grantiva',
+  express.raw({ type: 'application/json' }),
+  (req, res) => {
+    const signature = req.headers['x-grantiva-signature'];
+    const expected =
+      'sha256=' +
+      crypto
+        .createHmac('sha256', process.env.WEBHOOK_SECRET)
+        .update(req.body)
+        .digest('hex');
 
-  if (signature !== expected) {
-    return res.status(401).send('Invalid signature');
+    const ok =
+      signature &&
+      signature.length === expected.length &&
+      crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected));
+
+    if (!ok) return res.status(401).send('Invalid signature');
+
+    const { event, data } = JSON.parse(req.body.toString('utf8'));
+
+    switch (event) {
+      case 'device.high_risk':
+        // Every value in `data` is a string — parse before comparing.
+        console.log(`High risk device ${data.key_id} scored ${data.risk_score}`);
+        flagDevice(data.key_id, Number(data.risk_score));
+        break;
+      case 'device.new':
+        console.log(`New device ${data.key_id} (${data.device_model})`);
+        break;
+    }
+
+    res.sendStatus(200);
   }
-
-  // Process event
-  const { event, data } = req.body;
-
-  switch (event) {
-    case 'device.high_risk':
-      console.log(`High risk device: ${data.device_id}, score: ${data.risk_score}`);
-      blockDevice(data.device_id);
-      break;
-    case 'device.new':
-      console.log(`New device: ${data.device_id}`);
-      break;
-  }
-
-  res.sendStatus(200);
-});
+);
 ```
 
 ```swift
-// Vapor example
+// Vapor
 func handleWebhook(_ req: Request) throws -> HTTPStatus {
     let signature = req.headers.first(name: "X-Grantiva-Signature") ?? ""
     let body = req.body.data ?? ByteBuffer()
@@ -73,7 +87,7 @@ func handleWebhook(_ req: Request) throws -> HTTPStatus {
 
     switch payload.event {
     case "device.high_risk":
-        // Handle high risk device
+        // payload.data is [String: String]
         break
     default:
         break
@@ -83,29 +97,40 @@ func handleWebhook(_ req: Request) throws -> HTTPStatus {
 }
 ```
 
+<Warning>
+Inside `data`, **every value is a string**. `risk_score` arrives as `"82"`, `auto_renew` as `"true"`. Convert before comparing.
+</Warning>
+
+Dedupe on the `X-Grantiva-Delivery` header — a retry reuses the same delivery id.
+
 ## 3. Test your endpoint
 
-From the webhook detail page in the dashboard, click **Send Test Event**. This fires a `webhook.test` event to verify your endpoint is reachable.
+From the webhook detail page in the dashboard, click **Send Test Event**. Grantiva synchronously delivers a synthetic `attestation.completed` payload, signed exactly like a real event, and shows you the HTTP status, response body, and latency it got back.
+
+`attestation.completed` is a test-only name — you cannot subscribe to it and it is never sent outside a test.
 
 ## 4. Verify it works
 
 Check the delivery log in the dashboard. Each delivery shows:
+
 - HTTP status code
-- Response body
+- Response body (first 1000 characters)
+- Attempt count and error, if any
 - Delivery time
-- Retry count
 
 ## Retries
 
-Failed deliveries (non-2xx response or timeout) are retried up to 3 times with exponential backoff:
+A delivery succeeds on any 2xx. Anything else — a non-2xx status or a connection error — is a failure, and Grantiva makes at most **3 attempts** in total:
 
-| Attempt | Delay |
-|---------|-------|
-| 1st retry | ~1 minute |
-| 2nd retry | ~5 minutes |
-| 3rd retry | ~30 minutes |
+| Attempt | When |
+|---------|------|
+| 1 | Immediately |
+| 2 | ~1 minute after the first failure |
+| 3 | ~5 minutes after the second failure |
+
+After the third failure the delivery is marked permanently failed. You can re-drive it from the delivery log, which resets the attempt counter.
 
 ## Next steps
 
-- [Webhooks concepts](/concepts/webhooks) — signature verification in more languages
+- [Webhooks concepts](/concepts/webhooks) — full event catalog, payload fields per event, and signature verification
 - [Webhook API Reference](/api-reference/webhooks/endpoints) — list, create, update, and delete endpoints programmatically

@@ -3,32 +3,45 @@ title: "Comments"
 description: "List and add comments on feature requests"
 ---
 
+## Authentication
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side/simulator callers. Identity headers alone return 401. See [Authentication](/api-reference/authentication) |
+
+API-key callers need `feedback:read` to list and `feedback:write` to post. To comment **as staff**, use the [console API](/api-reference/feedback/console) instead — comments posted here are always attributed to a user.
+
+---
+
 ## List comments
 
 ```
 GET /api/v1/feedback/features/:featureId/comments
 ```
 
-### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `X-Bundle-ID` | Yes | App bundle identifier |
-| `X-Team-ID` | Yes | Apple Developer Team ID |
+Returns every comment on the feature request, oldest first.
 
 ### Response
 
 ```json
 [
   {
-    "id": "uuid",
-    "featureRequestId": "uuid",
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "featureRequestId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
     "authorType": "user",
     "body": "Great idea! I'd love this feature.",
-    "createdAt": "2025-03-10T12:00:00Z"
+    "createdAt": "2026-03-10T12:00:00Z"
   }
 ]
 ```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `authorType` | `string` | `user` for app users, `admin` for staff replies |
+
+`404` if the feature request doesn't exist in your organization.
 
 ---
 
@@ -50,10 +63,15 @@ POST /api/v1/feedback/features/:featureId/comments
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `authorId` | `string` | Yes | User or device identifier |
-| `body` | `string` | Yes | Comment text (1–2,000 characters) |
+| `body` | `string` | Yes | Comment text; must be non-empty after trimming |
 | `pushToken` | `string` | No | Hex APNs token — subscribes this device to the thread channel for admin-reply pushes. See [Push](/push/overview#feedback-push-integration) |
 | `pushEnvironment` | `string` | No | `sandbox` or `production` |
 
 ### Response
 
-Returns the created comment object.
+The created comment object. The feature request's `commentCount` is incremented in the same transaction.
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Empty `body`, or `:featureId` is not a UUID |
+| 404 | No such feature request in your organization |

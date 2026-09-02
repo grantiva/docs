@@ -1,6 +1,14 @@
 ---
 title: "VRT Baselines"
-description: "Manage baseline images for visual regression testing"
+description: "Manage baseline images and the GitHub app link for visual regression testing"
+---
+
+## Authentication
+
+All VRT endpoints take an API key, sent as `X-API-Key` or `Authorization: Bearer <key>`. Reads require the `vrt:read` scope, writes require `vrt:write`.
+
+Baselines are stored per project, branch, and screen name. Uploading a baseline creates the project on first use; the read and delete routes return `404` for a project slug that does not exist in your organization.
+
 ---
 
 ## List baselines
@@ -9,19 +17,15 @@ description: "Manage baseline images for visual regression testing"
 GET /api/v1/vrt/baselines/:project/:branch
 ```
 
-### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `X-API-Key` | Yes | Your API key |
-
 ### Response
 
 ```json
 {
-  "screens": ["Home", "Profile", "Settings", "Login"]
+  "screens": ["Home", "Login", "Profile", "Settings"]
 }
 ```
+
+Screen names, sorted alphabetically. An empty array means the branch has no baselines yet.
 
 ---
 
@@ -31,7 +35,7 @@ GET /api/v1/vrt/baselines/:project/:branch
 GET /api/v1/vrt/baselines/:project/:branch/:screen
 ```
 
-Returns PNG image data.
+Returns PNG image data (`Content-Type: image/png`), or `404` when no baseline exists for that screen.
 
 ---
 
@@ -41,15 +45,15 @@ Returns PNG image data.
 POST /api/v1/vrt/baselines/:project/:branch/:screen
 ```
 
-Upload a PNG image as the new baseline for a screen.
+Upload a PNG image as the new baseline for a screen. Replaces the existing baseline if there is one.
 
 ### Body
 
-Binary PNG data.
+Raw binary PNG data — not multipart.
 
 ### Response
 
-`200 OK`
+`200 OK` with an empty body. An empty request body returns `400`.
 
 ---
 
@@ -67,11 +71,13 @@ DELETE /api/v1/vrt/baselines/:project/:branch/:screen
 
 ## Promote baselines
 
-Copy baselines from one branch to another.
+Copy every baseline from one branch to another — typically promoting a feature branch's approved baselines onto `main`. Existing baselines on the target branch are overwritten; baselines the source branch does not have are left alone.
 
 ```
 POST /api/v1/vrt/baselines/:project/:branch/promote
 ```
+
+`:branch` is the **target** branch.
 
 ### Body
 
@@ -83,4 +89,57 @@ POST /api/v1/vrt/baselines/:project/:branch/promote
 
 ### Response
 
-`200 OK`
+`200 OK`. Returns `404` when the source branch has no baselines.
+
+---
+
+## GitHub app link
+
+Links a project to a GitHub App installation so VRT results can be reported on pull requests.
+
+```
+POST /api/v1/vrt/github/install
+```
+
+```json
+{
+  "installation_id": 12345678,
+  "account_login": "acme",
+  "project": "checkout-app"
+}
+```
+
+Creates the project if it does not exist, and replaces any existing link for it.
+
+**Response** — `200 OK`
+
+```json
+{
+  "status": "linked",
+  "installation_id": 12345678,
+  "project": "checkout-app"
+}
+```
+
+```
+GET /api/v1/vrt/github/install/:project
+```
+
+**Response** — `200 OK`
+
+```json
+{
+  "installed": true,
+  "installation_id": 12345678,
+  "account_login": "acme"
+}
+```
+
+An unknown project or an unlinked one returns `200` with `"installed": false` and null fields.
+
+---
+
+## See also
+
+- [VRT Runs](/api-reference/vrt/runs)
+- [VRT Quickstart](/quickstart-vrt)

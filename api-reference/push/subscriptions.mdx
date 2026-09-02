@@ -3,7 +3,9 @@ title: "Push Subscriptions"
 description: "Subscribe device tokens to channels"
 ---
 
-Device-facing endpoints, authenticated with the app's **public key** (`grv_pub_`, sent as `X-API-Key` or `Authorization: Bearer`). Rate limit: 240 req/min per key.
+Device-facing endpoints, authenticated with the app's **public key** (`grv_pub_`). Send it as `X-API-Key` or `Authorization: Bearer` — the header is checked in that order, and query strings are never accepted. The app's secret key also works here; the public key never works on [publish](/api-reference/push/publish).
+
+Rate limit: 240 requests per minute per key. Exceeding it returns `429` with a `Retry-After` header.
 
 ## Subscribe
 
@@ -25,15 +27,38 @@ POST /v1/apps/:appID/subscriptions
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `channel` | `string` | Yes | Opaque channel name, max 255 printable chars |
-| `deviceToken` | `string` | Yes | Hex APNs token |
+| `channel` | `string` | Yes | Opaque channel name, 1–255 printable characters, not only whitespace |
+| `deviceToken` | `string` | Yes | Hex APNs token, 16–512 characters, even length. Normalized to lowercase |
 | `tokenType` | `string` | Yes | `alert`, `liveactivity-start`, or `liveactivity-update` |
-| `activityID` | `string` | For `liveactivity-update` | The Live Activity this update token belongs to |
-| `environment` | `string` | No | `sandbox` or `production` |
-| `metadata` | `object` | No | Arbitrary key-value data stored with the subscription |
+| `activityID` | `string` | For `liveactivity-update` | The Live Activity this update token belongs to, max 255 characters |
+| `environment` | `string` | No | `sandbox` or `production` — overrides the app's default for this subscription |
+| `metadata` | `object` | No | String key-value data stored with the subscription |
 | `previousToken` | `string` | No | A rotated token — all its same-type subscriptions are deleted (push-to-start rotation) |
 
 Subscriptions upsert by (app, deviceToken, tokenType, channel): re-registering updates rather than duplicates. Returns **201** on create, **200** on update.
+
+**Response**
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "channel": "order:42:status",
+  "deviceToken": "a1b2c3...",
+  "tokenType": "alert",
+  "activityID": null,
+  "environment": "production",
+  "metadata": { "locale": "en_US" },
+  "createdAt": "2026-07-26T12:00:00Z"
+}
+```
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Invalid channel, device token, or a `liveactivity-update` subscription without `activityID` |
+| 401 | Missing or invalid API key |
+| 429 | Rate limit exceeded for this key |
 
 ## List a device's subscriptions
 
@@ -41,7 +66,24 @@ Subscriptions upsert by (app, deviceToken, tokenType, channel): re-registering u
 GET /v1/apps/:appID/subscriptions?deviceToken=<hex>
 ```
 
-Returns the device's subscriptions — useful for reconciliation after reinstall or token rotation.
+Returns the device's subscriptions, oldest first — useful for reconciliation after reinstall or token rotation. `deviceToken` is required; omitting it returns `400`.
+
+```json
+{
+  "subscriptions": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "channel": "order:42:status",
+      "deviceToken": "a1b2c3...",
+      "tokenType": "alert",
+      "activityID": null,
+      "environment": "production",
+      "metadata": null,
+      "createdAt": "2026-07-26T12:00:00Z"
+    }
+  ]
+}
+```
 
 ## Unsubscribe
 
@@ -57,4 +99,4 @@ DELETE /v1/apps/:appID/subscriptions
 }
 ```
 
-With `channel` + `tokenType`, removes that one subscription. With `deviceToken` alone, wipes every subscription for the device (logout). Returns `{ "removed": <count> }`.
+With `channel` (optionally narrowed by `tokenType`), removes the matching subscriptions. With `deviceToken` alone, wipes every subscription for the device (logout). Returns `{ "removed": <count> }`.

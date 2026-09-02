@@ -1,0 +1,140 @@
+---
+title: "Console: feedback and support"
+description: "Triage feature requests and work support tickets from the terminal"
+---
+
+`grantiva console feedback` triages the feature requests your users file; `grantiva console support` works their support tickets.
+
+Reading needs `feedback:read`. Every staff action — changing a status or priority, replying, commenting — needs `feedback:manage`. Filtering by `--app` also needs `apps:read` to resolve the bundle ID.
+
+## Feature requests
+
+### `grantiva console feedback list`
+
+List feature requests, most voted first.
+
+```bash
+grantiva console feedback list [--status STATUS] [--app APP] [--search TEXT]
+                              [--sort votes|newest|oldest] [--page N] [--per N] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--status` | Only this status. |
+| `--app` | Only requests for this app (bundle ID or UUID). |
+| `--search` | Match title or description, case-insensitively. |
+| `--sort` | Order: `votes` (default), `newest`, or `oldest`. |
+| `--page` | Page number, starting at 1. |
+| `--per` | Requests per page, 1–100. Default 20. |
+
+Statuses: `pending`, `open`, `planned`, `in_progress`, `shipped`, `declined`, `duplicate`.
+
+```bash
+grantiva console feedback list --status open --sort votes --per 50
+```
+
+### `grantiva console feedback get`
+
+Show a feature request with its comment thread.
+
+```bash
+grantiva console feedback get <request-id> [--json]
+```
+
+### `grantiva console feedback set-status`
+
+Change a feature request's status.
+
+```bash
+grantiva console feedback set-status <request-id> <status> [--json]
+```
+
+The org admin is emailed if that notification is turned on — see [notification preferences](/cli/console-org#notification-preferences).
+
+```bash
+grantiva console feedback set-status 8f2c... shipped
+```
+
+### `grantiva console feedback comment`
+
+Reply on a feature request as the team.
+
+```bash
+grantiva console feedback comment <request-id> --body TEXT|@file [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--body` | Comment text, inline or `@file`. Required. |
+
+Devices following the thread get a push notification.
+
+```bash
+grantiva console feedback comment 8f2c... --body @replies/shipped-in-2.1.md
+```
+
+## Support tickets
+
+### `grantiva console support list`
+
+List tickets, most recently updated first.
+
+```bash
+grantiva console support list [--status STATUS] [--priority PRIORITY] [--app APP]
+                             [--search TEXT] [--page N] [--per N] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--status` | Only this status: `open`, `awaiting_reply`, `resolved`, `closed`. |
+| `--priority` | Only this priority: `low`, `normal`, `high`, `urgent`. |
+| `--app` | Only tickets for this app (bundle ID or UUID). |
+| `--search` | Match subject or submitter email, case-insensitively. |
+| `--page` | Page number, starting at 1. |
+| `--per` | Tickets per page, 1–100. Default 20. |
+
+```bash
+grantiva console support list --status open --priority urgent
+```
+
+### `grantiva console support get`
+
+Show a ticket with its full conversation.
+
+```bash
+grantiva console support get <ticket-id> [--json]
+```
+
+### `grantiva console support reply`
+
+Reply to a ticket as the team.
+
+```bash
+grantiva console support reply <ticket-id> --body TEXT|@file [--json]
+```
+
+Replying moves the ticket to `awaiting_reply` and emails the submitter if that notification is on.
+
+### `grantiva console support set-status`
+
+```bash
+grantiva console support set-status <ticket-id> <status> [--json]
+```
+
+Resolving a ticket emails the submitter if that notification is on.
+
+### `grantiva console support set-priority`
+
+```bash
+grantiva console support set-priority <ticket-id> <priority> [--json]
+```
+
+```bash
+grantiva console support set-priority 4a91... urgent
+```
+
+## Next steps
+
+- [Console overview](/cli/console) — auth, scopes, and shared conventions
+- [Feedback SDK](/sdk/feedback) — how requests and tickets are filed from the app
+- [Feedback quick start](/quickstart-feedback)

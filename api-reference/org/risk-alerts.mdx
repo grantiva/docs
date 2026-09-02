@@ -3,7 +3,7 @@ title: "Risk Alert Rules"
 description: "Fire webhooks when a device's risk score crosses a configured threshold"
 ---
 
-<Info>Configuring risk alert rules and reading the delivery log require the **Business** plan or higher. Listing existing rules is available to all plans.</Info>
+<Info>Creating, updating, and deleting rules and reading the delivery log require the **Business** plan or higher. Listing existing rules is available on all plans.</Info>
 
 Risk alert rules are evaluated after every attestation, once the device's risk score is computed. When a score crosses a rule's threshold, Grantiva POSTs an alert payload to the rule's webhook URL. Alerts never block or slow down the attestation path — delivery happens in the background.
 
@@ -11,11 +11,19 @@ Risk alert rules are evaluated after every attestation, once the device's risk s
 
 - **Cooldown**: the same device will not re-trigger the same rule within 1 hour.
 - **Retries**: up to 3 attempts per alert, with 1 min / 5 min / 30 min backoff.
-- **Signing**: every request carries an `X-Grantiva-Signature` header — an HMAC-SHA256 of the raw body, signed with the rule's secret (generated at rule creation).
+- **Signing**: every request carries `X-Grantiva-Signature` — `sha256=` followed by the hex HMAC-SHA256 of the raw body, computed with a signing secret generated for the rule. The scheme matches [webhook endpoints](/api-reference/webhooks/endpoints#signature-verification).
 
 ## Authentication
 
-All endpoints require a dashboard session (cookie-based) with organization context. Creating, updating, and deleting rules additionally requires **Admin** role or above.
+These endpoints accept either a dashboard session cookie or a server API key sent as `Authorization: Bearer <key>`.
+
+| Endpoint | Session role | Key scope |
+|----------|--------------|-----------|
+| `GET /api/v1/org/risk-alerts/rules` | Any member | `alerts:read` |
+| `POST /api/v1/org/risk-alerts/rules` | Admin | `alerts:write` |
+| `PATCH /api/v1/org/risk-alerts/rules/:ruleId` | Admin | `alerts:write` |
+| `DELETE /api/v1/org/risk-alerts/rules/:ruleId` | Admin | `alerts:write` |
+| `GET /api/v1/org/risk-alerts/deliveries` | Any member | `alerts:read` |
 
 ---
 
@@ -38,10 +46,13 @@ Headers on the outgoing request:
 
 | Header | Value |
 |--------|-------|
-| `X-Grantiva-Signature` | HMAC-SHA256 signature of the raw body |
+| `Content-Type` | `application/json` |
+| `X-Grantiva-Signature` | `sha256=<hex HMAC-SHA256 of the raw body>` |
 | `X-Grantiva-Event` | `risk_alert` |
 | `X-Grantiva-Delivery` | Delivery UUID |
 | `User-Agent` | `Grantiva-Webhooks/1.0` |
+
+<Note>On an automatic retry, `bundleId` and `teamId` are sent as empty strings — the retry rebuilds the payload from the stored delivery record, which keeps only the device and score. Key your handling on `deviceId`.</Note>
 
 ---
 
@@ -77,8 +88,6 @@ Returns all alert rules for the organization, newest first.
 POST /api/v1/org/risk-alerts/rules
 ```
 
-Requires **Admin** role and **Business** plan or higher.
-
 **Request body**
 
 ```json
@@ -101,6 +110,13 @@ Requires **Admin** role and **Business** plan or higher.
 
 Returns the rule object (same shape as the list response). New rules are active immediately.
 
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 403 | Not an Admin, or plan below Business |
+| 400 | Validation failed — `name` empty or over 100 characters, `threshold` outside 0–100, `comparison` not `gt`/`gte`, or `webhookUrl` empty |
+
 ---
 
 ## Update a rule
@@ -109,7 +125,7 @@ Returns the rule object (same shape as the list response). New rules are active 
 PATCH /api/v1/org/risk-alerts/rules/:ruleId
 ```
 
-Requires **Admin** role and **Business** plan or higher. All fields are optional; only provided fields change.
+All fields are optional; only provided fields change.
 
 **Request body**
 
@@ -143,8 +159,6 @@ Returns the updated rule object.
 DELETE /api/v1/org/risk-alerts/rules/:ruleId
 ```
 
-Requires **Admin** role and **Business** plan or higher.
-
 **Response** — `204 No Content`
 
 ---
@@ -155,7 +169,7 @@ Requires **Admin** role and **Business** plan or higher.
 GET /api/v1/org/risk-alerts/deliveries
 ```
 
-Requires **Business** plan or higher (any member role). Returns the 200 most recent alert deliveries across all of the organization's rules, newest first.
+Returns the 200 most recent alert deliveries across all of the organization's rules, newest first.
 
 **Response**
 
@@ -189,4 +203,4 @@ Requires **Business** plan or higher (any member role). Returns the 200 most rec
 ## See also
 
 - [Webhook Endpoints](/api-reference/webhooks/endpoints) — org-wide event webhooks with the same signature scheme
-- [Webhook Deliveries & Testing](/api-reference/org/webhook-endpoints)
+- [Attestation Failure Alerts](/api-reference/org/alerts)

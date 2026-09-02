@@ -1,0 +1,152 @@
+---
+title: "Simulator management"
+description: "Provision, share, and reclaim simulators with the Grantiva CLI"
+---
+
+Every command that touches a simulator — `run`, `ci run`, `diff capture`, `build install`, `runner start`, `record` — boots it through the same manager. That manager keeps two pieces of state so parallel work on one Mac does not collide:
+
+- A **capacity registry** limiting how many Grantiva-booted simulators run at once
+- A **lease** on each simulator, so a second run cannot tear down the session a first run is using
+
+Simulators you booted yourself in Xcode are never counted against the limit and are never shut down by Grantiva teardown.
+
+## Provision a simulator
+
+```bash
+grantiva simulator ensure --name "iPhone 17 Pro"
+```
+
+`--name` alone is enough: the device type is read out of the name, the newest installed iOS runtime is used, an existing simulator with that name is reused as-is, and the device is booted.
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Simulator name. Also the source of the device type when `--device-type` is omitted. Required. |
+| `--device-type` | Device type name (`"iPhone 17 Pro"`) or identifier. Defaults to the device model named in `--name`. |
+| `--runtime` | Runtime name, version, identifier, or `latest`. Defaults to the newest installed iOS runtime. |
+| `--no-boot` | Create the simulator without booting it. Booting is on by default. |
+
+**stdout is the UDID and nothing else**, so it can be captured directly:
+
+```bash
+udid=$(grantiva simulator ensure --name "iPhone 17 Pro")
+grantiva run --simulator "$udid" --flow flows/smoke.yaml
+```
+
+The human-readable line (`Reused iPhone 17 Pro (…) — Booted`) goes to stderr, where a terminal shows it and a command substitution ignores it. `--json` emits the full record, including display geometry.
+
+Concurrent `ensure` calls for the same new name are serialized, so two agents starting at once cannot create duplicate same-name simulators.
+
+## Capacity
+
+At most **four** Grantiva-booted simulators are admitted at once. A fifth boot waits for a slot and logs a warning naming the sessions holding capacity:
+
+```
+Warning: Waiting for simulator capacity (4/4): APP-652 iPhone 17 Pro [APP-652], …
+```
+
+If no slot frees up within the timeout — **600 seconds** by default — the boot fails and names the active owners.
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GRANTIVA_MAX_SIMULATORS` | `4` | Maximum Grantiva-booted simulators on this host. |
+| `GRANTIVA_SIMULATOR_WAIT_TIMEOUT_SECONDS` | `600` | How long a boot waits for a free slot. |
+| `GRANTIVA_SESSION_ID` | — | Ticket identifier that owns the simulators booted under it. |
+
+The registry lives in `~/.grantiva/simulator-capacity/` and every mutation is serialized with a file lock, so admission is atomic across concurrently running CLI processes.
+
+<Warning>
+The waiting line is logged as a warning, not as progress narration, so `--quiet` does not hide it. It is the only explanation for a stall that can run for ten minutes.
+</Warning>
+
+## Sessions and tickets
+
+Set `GRANTIVA_SESSION_ID` so several CLI invocations share one durable owner, then release it when the work is done:
+
+```bash
+export GRANTIVA_SESSION_ID=APP-652
+
+grantiva simulator ensure --name "APP-652 iPhone 17 Pro"
+# build, install, and run as needed
+grantiva simulator teardown --session-id APP-652
+```
+
+Without `GRANTIVA_SESSION_ID`, each simulator owns itself and the record is released when the device shuts down.
+
+List what currently holds capacity:
+
+```bash
+grantiva simulator sessions
+```
+
+```
+Grantiva-managed simulator sessions (2/4):
+  APP-652 iPhone 17 Pro (A1B2C3D4-…) — APP-652 [active]
+  iPhone 16 (E5F6A7B8-…) — simulator:E5F6A7B8-… [pending]
+```
+
+A `pending` record is a slot reserved by a boot still in progress; `active` means the simulator is up and owned.
+
+## Teardown
+
+```bash
+grantiva simulator teardown --session-id APP-652
+grantiva simulator teardown --udid "$UDID"
+```
+
+`--session-id` and `--udid` are mutually exclusive, and one of them is required. Simulators Grantiva created are deleted outright; pre-existing devices the session merely booted are shut down and left in place. The `--json` result reports a `deleted` flag per session.
+
+### Reclaiming a stranded simulator
+
+A run that was killed outright — rather than interrupted — can leave `grantiva-runner`, WebDriverAgent's `xcodebuild`, or a `simctl diagnose` still owning a simulator, with nothing in the session ledger to tear down. `--force` reclaims it by live process inspection instead of the ledger:
+
+```bash
+grantiva simulator teardown --udid "$UDID" --force
+```
+
+This kills the processes holding that device, breaks the simulator lease, and clears any stale capacity record. `--json` reports `reclaimed`, distinguishing a teardown that actually killed something from one that found the device already free; both exit `0`.
+
+`--udid` is validated for the 8-4-4-4-12 hex form, and a blank value is rejected — `--udid "$UDID"` with `UDID` unset used to report a successful reclaim of nothing.
+
+## Deleting and cleaning up
+
+Delete one simulator by name:
+
+```bash
+grantiva simulator delete --name "APP-652 iPhone 17 Pro"
+```
+
+Delete every Grantiva-created simulator that is shut down and not part of an active session:
+
+```bash
+grantiva simulator cleanup
+```
+
+The CLI records every simulator it creates in a durable provenance ledger, so `cleanup` only ever removes devices Grantiva made. Simulators you created in Xcode are left alone. It is safe to run at the end of a CI job or on a schedule on a shared machine.
+
+## Leases
+
+Separately from capacity, each simulator carries a lease naming the process that owns it — the CLI's pid, the runner's pid, and whether the run is `--keep-alive`. A second run targeting an already-owned simulator fails immediately, naming the owning process and the command that frees it, rather than tearing down a live WebDriverAgent session.
+
+`grantiva runner start` holds its lease for the life of the interactive session; `grantiva runner stop` releases it.
+
+Interrupting a run with Ctrl-C — or `kill -INT` against a backgrounded `--keep-alive` run — reaps `grantiva-runner`, WebDriverAgent, and any `simctl diagnose` they started, then releases the lease. Signals are forwarded to the whole runner process group.
+
+## Running in parallel
+
+Runs on different simulator UDIDs execute in parallel. To fan out safely:
+
+```bash
+for device in "iPhone 17" "iPhone 17 Pro" "iPad Pro 13-inch (M4)"; do
+  udid=$(grantiva simulator ensure --name "CI $device")
+  grantiva run --simulator "$udid" --no-build \
+    --report-dir "reports/$udid" --ready-file "/tmp/$udid.ready" &
+done
+wait
+```
+
+Give each run its own `--report-dir` so their `report.json` and assets do not collide, and raise `GRANTIVA_MAX_SIMULATORS` if you want more than four devices up at once.
+
+## Next steps
+
+- [Commands](/cli/commands) — the full `grantiva simulator` synopsis alongside every other command
+- [CI integration](/cli/ci-integration) — running all of this on a shared CI machine

@@ -1,0 +1,284 @@
+---
+title: "Console: apps, claims, and devices"
+description: "Register apps, author custom claims, and inspect attested devices from the terminal"
+---
+
+Three areas that describe what attests and what ends up in the attestation JWT: `apps` (the bundle IDs allowed to attest), `claims` (the custom claims minted into the token), and `devices` (what has actually attested).
+
+## Apps
+
+Apps are addressable by bundle ID or UUID. The first app registered becomes the primary app; the primary app and the last remaining app cannot be deleted.
+
+### `grantiva console apps list`
+
+List registered apps, primary first.
+
+```bash
+grantiva console apps list [--json]
+```
+
+Needs `apps:read`.
+
+### `grantiva console apps get`
+
+```bash
+grantiva console apps get <app> [--json]
+```
+
+Needs `apps:read`.
+
+### `grantiva console apps register`
+
+Register an app so devices running it can attest.
+
+```bash
+grantiva console apps register <bundle-id> --team-id TEAM_ID
+                              [--name NAME] [--description TEXT] [--primary] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--team-id` | Apple Developer Team ID, 10 characters, from developer.apple.com. Required. |
+| `--name` | Display name. Defaults to the last segment of the bundle ID. |
+| `--description` | Description. |
+| `--primary` | Make this the primary app, demoting the current one. |
+
+Bundle ID and Team ID are fixed at registration and cannot be changed afterwards.
+
+Needs `apps:write`.
+
+```bash
+grantiva console apps register com.example.app --team-id A1B2C3D4E5 --name "Example"
+```
+
+### `grantiva console apps update`
+
+Rename an app or change its description and toggles.
+
+```bash
+grantiva console apps update <app> [--name NAME] [--description TEXT]
+                            [--analytics | --no-analytics]
+                            [--webhooks | --no-webhooks] [--json]
+```
+
+Needs `apps:write`.
+
+### `grantiva console apps activate` / `deactivate`
+
+Allow or stop accepting attestations from an app.
+
+```bash
+grantiva console apps activate   <app> [--json]
+grantiva console apps deactivate <app> [--json]
+```
+
+The primary app cannot be deactivated.
+
+Needs `apps:write`.
+
+### `grantiva console apps set-primary`
+
+```bash
+grantiva console apps set-primary <app> [--json]
+```
+
+The app must be active.
+
+Needs `apps:write`.
+
+### `grantiva console apps delete`
+
+Delete an app and everything attached to it.
+
+```bash
+grantiva console apps delete <app> [--yes] [--json]
+```
+
+<Warning>
+Deleting an app removes its device profiles, flags, and attestation history. The command prompts on a TTY and requires `--yes` otherwise.
+</Warning>
+
+Needs `apps:delete`.
+
+## Custom claims
+
+Custom claims are the extra values minted into each device's attestation JWT. Claims are addressable by key or UUID, and evaluate in priority order — lower priority evaluates first.
+
+A claim key starts with a letter and contains only letters, digits, and underscores.
+
+### Claim types
+
+| Type | Configuration option | Description |
+|------|---------------------|-------------|
+| `static` | `--value` | A fixed value. |
+| `conditional` | `--rules` | A JSON array of rules; the first match supplies the value. |
+| `dynamic` | `--expression` | An expression evaluated per device. |
+| `external` | `--external` | A JSON endpoint configuration. Enterprise. |
+
+Rules and configuration JSON can be inline or read from a file with `@file.json`.
+
+### `grantiva console claims list`
+
+List custom claims in priority order.
+
+```bash
+grantiva console claims list [--json]
+```
+
+Needs `claims:read`.
+
+### `grantiva console claims get`
+
+```bash
+grantiva console claims get <claim> [--json]
+```
+
+Needs `claims:read`.
+
+### `grantiva console claims create`
+
+```bash
+grantiva console claims create <key> --type static|conditional|dynamic|external
+                              [--name NAME] [--data-type TYPE] [--description TEXT]
+                              [--value VALUE] [--rules JSON|@file.json]
+                              [--expression EXPR] [--external JSON|@file.json]
+                              [--validation JSON|@file.json]
+                              [--priority N] [--inactive] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--type` | Claim type. Required. |
+| `--name` | Display name. Defaults to the claim key. |
+| `--data-type` | Value type: `string`, `number`, `boolean`, `array`, `object`, or `date`. Default `string`. |
+| `--validation` | Validation rules as JSON, or `@file.json`. |
+| `--priority` | Priority, lower evaluates first. Default `0`. |
+| `--inactive` | Create the claim inactive. |
+
+The option matching the claim's type is required: `--type static` needs `--value`, `conditional` needs `--rules`, `dynamic` needs `--expression`, `external` needs `--external`. That is checked before the request is sent.
+
+Needs `claims:write`.
+
+```bash
+grantiva console claims create plan --type static --value gold
+grantiva console claims create region --type conditional --rules @rules.json
+grantiva console claims create score --type dynamic --data-type number \
+  --expression 'risk_score * 2'
+```
+
+### `grantiva console claims update`
+
+Change a claim's name, description, priority, active state, or configuration.
+
+```bash
+grantiva console claims update <claim> [--name NAME] [--description TEXT] [--priority N]
+                              [--active | --no-active]
+                              [--value VALUE] [--rules JSON|@file.json]
+                              [--expression EXPR] [--external JSON|@file.json]
+                              [--validation JSON|@file.json] [--json]
+```
+
+The claim's type, data type, and key are fixed at creation. Only the configuration option matching the claim's type applies.
+
+Needs `claims:write`.
+
+### `grantiva console claims reorder`
+
+Set claim priorities by listing every claim in order.
+
+```bash
+grantiva console claims reorder <claim> [<claim>...] [--json]
+```
+
+Every claim must appear exactly once; the first listed gets priority 0.
+
+Needs `claims:write`.
+
+### `grantiva console claims delete`
+
+```bash
+grantiva console claims delete <claim> [--yes] [--json]
+```
+
+Needs `claims:delete`.
+
+### `grantiva console claims test` and `preview`
+
+`test` evaluates a claim **definition you have not saved**; `preview` evaluates a **saved claim**. Both run against a simulated device.
+
+```bash
+grantiva console claims test <key> --type TYPE [definition options] [device options] [--json]
+grantiva console claims preview <claim> [device options] [--json]
+```
+
+Device options, shared by both:
+
+| Flag | Description |
+|------|-------------|
+| `--device-model` | Simulated device model, e.g. `iPhone16,1`. |
+| `--os-version` | Simulated OS version, e.g. `18.0`. |
+| `--app-version` | Simulated app version. |
+| `--risk-score` | Simulated risk score, 0–100. |
+| `--attestation-count` | Simulated attestation count. |
+| `--jailbroken` | Simulate a jailbroken device. |
+| `--country` | Simulated country code, e.g. `CA`. |
+| `--data` | Extra evaluation data as `key=value`. Repeatable. |
+
+`test` takes the same definition options as `create`.
+
+Needs `claims:test`.
+
+```bash
+grantiva console claims test tier --type conditional --rules @rules.json \
+  --country CA --risk-score 8
+
+grantiva console claims preview plan --jailbroken --risk-score 90
+```
+
+## Devices
+
+### `grantiva console devices list`
+
+List devices, most recently attested first.
+
+```bash
+grantiva console devices list [--page N] [--per N] [--risk-min N] [--risk-max N]
+                             [--jailbroken | --no-jailbroken] [--app APP]
+                             [--search TEXT] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--page` | Page number, starting at 1. |
+| `--per` | Devices per page, 1–100. Default 20. |
+| `--risk-min` | Only devices with a risk score at or above this (0–100). |
+| `--risk-max` | Only devices with a risk score at or below this (0–100). |
+| `--jailbroken` / `--no-jailbroken` | Only jailbroken devices, or only clean ones. |
+| `--app` | Only devices attesting under this app (bundle ID or UUID). |
+| `--search` | Match key ID, model, OS version, or country, case-insensitively. |
+
+Risk bands: low 0–20, medium 21–50, high 51–75, critical 76–100.
+
+Needs `devices:read`. Filtering by `--app` also needs `apps:read` to resolve the bundle ID.
+
+```bash
+grantiva console devices list --risk-min 76 --per 100 --json | jq -r '.items[].key_id'
+```
+
+### `grantiva console devices get`
+
+Show a device's profile and its recent attestation events.
+
+```bash
+grantiva console devices get <key-id> [--json]
+```
+
+The argument is the device's App Attest key ID.
+
+Needs `devices:read`.
+
+## Next steps
+
+- [Console overview](/cli/console) — auth, scopes, and shared conventions
+- [Custom claims](/concepts/custom-claims) — what the claim types mean
+- [Risk scoring](/concepts/risk-scoring) — how the bands are calculated

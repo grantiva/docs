@@ -7,7 +7,7 @@ description: "How Grantiva VRT captures, compares, and tracks UI changes across 
 
 Grantiva VRT (Visual Regression Testing) catches unintended UI changes before they ship. You define the screens you care about in a YAML config file, and the CLI-driven capture engine screenshots each one on every pull request. If anything changes, the diff shows up in the dashboard and as a GitHub Check Run on the PR.
 
-**VRT is not Xcode UI testing.** You do not write XCTestCase classes or use Xcode Instruments. The CLI uses its own XCUITest driver (`grantiva-runner`) to navigate your app and take screenshots. Your existing Xcode UI tests are unaffected.
+**VRT is not Xcode UI testing.** You do not write `XCTestCase` classes or use Xcode Instruments. The CLI drives your app with its own runner, `grantiva-runner`, embedded in the binary. Your existing Xcode UI tests are unaffected.
 
 ## The baseline/capture/compare lifecycle
 
@@ -19,11 +19,13 @@ capture → compare → (approve or reject)
 
 ### 1. Capture
 
-The CLI builds your app, boots a simulator, and navigates through each screen defined in `grantiva.yml`. Screenshots are uploaded to the Grantiva dashboard.
+The CLI builds your app, boots a simulator, and navigates through each screen defined in `grantiva.yml`. Screenshots are written to `.grantiva/captures/`.
 
 ```bash
 grantiva diff capture
 ```
+
+Nothing is uploaded at this point — `grantiva diff capture` is entirely local and needs no account. `grantiva ci run` is the command that captures, compares, and uploads in one pass.
 
 ### 2. Compare
 
@@ -52,14 +54,18 @@ Rejections are visible in the dashboard and block CI if you configure the check 
 
 ## How the CLI driver works
 
-Grantiva ships a pre-built XCUITest runner binary (`grantiva-runner`) inside the CLI. This runner:
+Grantiva ships a pre-built runner binary (`grantiva-runner`) inside the CLI, extracted on first use or by `grantiva runner install`. The runner drives the app through **GrantivaAgent**, a WebDriverAgent embedded alongside it, over local HTTP. There is no Appium server to run, no Maestro install, and no Accessibility permission to grant.
 
-1. Installs into the simulator as a host app
-2. Receives navigation instructions from the CLI over a local socket
-3. Executes taps, swipes, and waits to drive your app to each screen
-4. Hands screenshot timing back to the CLI
+For each screen, the CLI:
 
-This is why **a physical device is not required for VRT** — the runner works entirely inside the iOS simulator. You do not need App Attest or any SDK integration for VRT to work.
+1. Boots the simulator and installs your app
+2. Starts a GrantivaAgent session
+3. Executes the taps, swipes, waits, and assertions in the screen's `path`
+4. Captures the screenshot at the end of the path
+
+The flow launches the app itself with `launchApp`, rather than the CLI pre-launching it — a CLI-side launch would create a process the agent cannot control, breaking `stopApp` and the other lifecycle steps.
+
+This is why **a physical device is not required for VRT** — everything runs inside the iOS simulator. You do not need App Attest or any SDK integration for VRT to work.
 
 ## Local vs CI usage
 
@@ -71,20 +77,22 @@ grantiva diff capture    # Capture current screens
 grantiva diff compare    # Compare against baselines
 ```
 
-Use local captures to preview VRT results before pushing. Baseline updates (`grantiva diff approve`) can be run locally or from CI.
+Use local captures to preview VRT results before pushing. `grantiva diff approve` promotes the current captures to baselines; pass screen names to approve selectively.
 
-**CI (GitHub Actions, Bitrise, etc.):**
+**CI (GitHub Actions, and any other macOS runner):**
 
 ```bash
-grantiva auth login --api-key $GRANTIVA_API_KEY   # API key auth, no browser
-grantiva ci run                                     # Full pipeline in one command
+export GRANTIVA_API_KEY=...    # from your CI secrets — no login step needed
+grantiva ci run                # full pipeline in one command
 ```
 
-`grantiva ci run` runs build + capture + compare + upload in sequence. The result is posted as a GitHub Check Run on the pull request.
+`grantiva ci run` runs build, capture, compare, and upload in sequence, and posts a GitHub Check Run on the pull request when the GitHub App is configured. It exits `0` when every screen passes and `1` when any fails — the results are uploaded either way.
 
 Authentication:
-- **Local**: `grantiva auth login` opens your browser. Credentials are cached in the keychain.
-- **CI**: Pass `GRANTIVA_API_KEY` as an environment variable (from your CI secrets). The `--api-key` flag or env var is picked up automatically.
+- **Local**: `grantiva auth login` opens your browser. Credentials are saved to `~/.grantiva/auth.json` with mode `0600`.
+- **CI**: set `GRANTIVA_API_KEY` from your CI secrets. The environment variable takes precedence over the saved file, so nothing needs writing to disk on a runner.
+
+`grantiva diff capture` and `grantiva diff compare` against local baselines need no account at all. Authentication buys you cloud baselines, uploaded runs, and the review loop.
 
 ## How results appear in the dashboard
 
@@ -93,9 +101,26 @@ Each `grantiva ci run` creates a **VRT Run** in your dashboard with:
 - **Total / Passed / Failed / New** screen counts (clickable to filter the screenshot grid)
 - Per-screen status: `passed`, `failed`, `new_screen`, or `pending`
 - Side-by-side baseline vs current diff view for failed screens
-- Approve/reject controls (also available via CLI)
+- Approve/reject controls
 
 New screens (no baseline yet) are shown separately and require a first approval before they enter the comparison cycle.
+
+## Reviewing a run
+
+Every review action in the dashboard has a CLI equivalent, so a pipeline can close the loop it opened:
+
+```bash
+grantiva console vrt runs get acme/my-app "$run_id"
+
+grantiva console vrt screen accept acme/my-app "$run_id" Home Settings
+grantiva console vrt screen flag   acme/my-app "$run_id" Checkout
+
+grantiva console vrt approve acme/my-app "$run_id"
+```
+
+Accepted screens become the branch baselines when the run is approved; flagged screens keep the baseline they had. Every failed or new screen has to be accepted or flagged first, unless you pass `--accept-all`. `grantiva console vrt reject` closes the run without touching any baseline.
+
+See [VRT review](/cli/console-vrt) for the full command set.
 
 ## Configuration reference
 
@@ -125,10 +150,11 @@ diff:
   perceptual_threshold: 5.0      # CIE76 perceptual distance (default 5.0)
 ```
 
-For the full configuration reference, see [CLI Configuration](/cli/configuration).
+For the full configuration reference, see [Configuration](/cli/configuration).
 
 ## Next steps
 
-- [VRT Quick Start](/quickstart-vrt) — get running in under 10 minutes
-- [CLI Commands](/cli/commands) — full command reference including `grantiva diff`, `grantiva ci run`, `grantiva doctor`
-- [CI Integration](/cli/ci-integration) — GitHub Actions, Bitrise, and Xcode Cloud examples
+- [VRT quick start](/quickstart-vrt) — get running in under 10 minutes
+- [Commands](/cli/commands) — the full reference, including `grantiva diff`, `grantiva ci run`, and `grantiva doctor`
+- [CI integration](/cli/ci-integration) — GitHub Actions, pre-built binaries, and parallel runs
+- [VRT review](/cli/console-vrt) — accept, flag, and approve runs from the terminal

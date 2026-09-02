@@ -77,11 +77,25 @@ POST /api/v1/attestation/validate
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `isValid` | `boolean` | Whether the device passed attestation |
+| `isValid` | `boolean` | Whether the device passed attestation. Always `true` on a 200 — failures are errors, not `isValid: false` |
 | `token` | `string` | Signed JWT token |
 | `expiresAt` | `string` | Token expiration (ISO 8601) |
-| `deviceIntelligence` | `object` | Device risk and integrity data. `riskScore` is `null` on the Free tier — use `riskCategory` |
+| `deviceIntelligence` | `object` | Device risk and integrity data — see below |
 | `customClaims` | `object` | Your configured custom claims, flattened to strings. Nested claim objects are stringified in this map — read structured claims from the decoded JWT instead |
+
+### Device intelligence
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `deviceId` | `string` | The `device_id` you passed to the challenge endpoint. A generated UUID when you passed none |
+| `riskScore` | `integer` \| `null` | 0–100. `null` on the Free tier — use `riskCategory` |
+| `riskCategory` | `string` | `trusted` (0–20), `suspicious` (21–75), or `blocked` (76–100) |
+| `deviceIntegrity` | `string` | `high`, `medium`, `low`, or `unknown` |
+| `jailbreakDetected` | `boolean` | True for jailbroken devices, and for development-signed builds (Xcode installs, sideloaded IPAs) |
+| `attestationCount` | `integer` | Attestations recorded for this device |
+| `lastAttestationDate` | `string` \| `null` | ISO 8601 timestamp |
+
+On the Free tier only `riskCategory` is computed from real data; `deviceIntegrity`, `jailbreakDetected`, and `attestationCount` are returned as placeholders (`unknown`, `false`, `1`). Upgrade to Pro or above for full device intelligence.
 
 ## Errors
 
@@ -110,3 +124,39 @@ Error responses carry a stable `code`, a developer-readable `error` message, a `
 | 429 | — | Rate limited. Check `Retry-After` and the `X-RateLimit-*` headers |
 
 <Note>The SDK (2.0.3+) self-heals `reattest_required` automatically: it clears the cached keyId and re-runs the full attestation once. You only see this error if the retry also fails.</Note>
+
+## Check a token
+
+```
+GET /api/v1/attestation/protected
+```
+
+A no-op endpoint that verifies a token end to end: it requires the identity headers plus a valid attestation JWT and echoes back what the server read from it. Useful when debugging an integration.
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` |
+
+### Response
+
+```json
+{
+  "message": "Successfully authenticated with App Attest for organization: Acme Inc",
+  "userId": "device-key-id",
+  "keyId": "device-key-id",
+  "deviceId": "abc123"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `message` | `string` | Confirmation including your organization name |
+| `userId` | `string` | The token's `sub` claim |
+| `keyId` | `string` | App Attest key ID from the token |
+| `deviceId` | `string` \| `null` | Device ID from the token, when one was set |
+
+An invalid or expired token returns `401 Unauthorized` with a `WWW-Authenticate` header.

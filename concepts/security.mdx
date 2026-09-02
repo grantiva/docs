@@ -5,75 +5,77 @@ description: "How Grantiva protects your app and your users' data"
 
 ## No client-side secrets
 
-Unlike most SDKs, Grantiva does not embed API keys in your app binary. Your app is identified by its **Bundle ID** and **Team ID** — both are public, non-sensitive values already present in every iOS app.
+Grantiva does not require an API key in your app binary. Your app is identified by its **Bundle ID** and **Team ID** — both public, non-sensitive values already present in every iOS app — and authenticated by the App Attest attestation itself.
 
-This means there are no secrets to extract from your IPA, no keys to rotate after a leak, and no risk of credential stuffing from reverse-engineered apps.
+That means there is no secret to extract from your IPA on a production build, and nothing to rotate after a leak.
+
+<Note>
+The one exception is the simulator, where App Attest is unavailable and the SDK falls back to an API key. Those requests are unattested and should use a development-only key. See [Simulator setup](/simulator-setup).
+</Note>
 
 ## Cryptographic attestation
 
 Device verification uses Apple's [App Attest](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity) framework:
 
 1. Grantiva issues a one-time cryptographic challenge
-2. The device creates an attestation using Apple's secure enclave
-3. Grantiva validates the attestation against Apple's servers
+2. The device creates an attestation with a Secure Enclave–backed key
+3. Grantiva validates the attestation against Apple's certificate chain
 4. A signed JWT is returned only after successful validation
 
-Challenges expire quickly and cannot be reused, preventing replay attacks.
+Challenges are **single-use** and expire after 5 minutes by default, which is what prevents replay.
 
 ## Signed JWT tokens
 
-Attestation tokens are signed JWTs containing:
+Attestation tokens are RS256-signed JWTs. Depending on your plan they carry device integrity, risk score, jailbreak status, attestation history, and your custom claims, alongside the standard `iss`, `aud`, `iat`, and `exp`.
 
-- Device identity and integrity status
-- Risk score and jailbreak detection
-- Custom claims you've configured
-- Expiration timestamp
-
-Your backend verifies the JWT signature to ensure it was issued by Grantiva and hasn't been tampered with.
+Your backend verifies the signature against [Grantiva's JWKS](/backend-verification) and pins `iss` and `aud` — pinning both is what stops a token minted for a different organization from being accepted. Tokens default to a 1-hour lifetime. See [JWT Claims](/concepts/jwt-claims) for the full reference.
 
 ## Webhook signatures
 
-All webhook payloads are signed with HMAC-SHA256 using your endpoint's secret. The signature is sent in the `X-Grantiva-Signature` header as `sha256=<hex-digest>`.
+Webhook payloads are signed with HMAC-SHA256 using your endpoint's secret. The signature is sent in the `X-Grantiva-Signature` header as `sha256=<hex-digest>` over the raw request body.
 
-Always verify signatures before processing webhook payloads. See [Webhooks](/concepts/webhooks) for implementation examples.
+The signing secret is returned **once**, when the endpoint is created. Always verify signatures before processing payloads — see [Webhooks](/concepts/webhooks#verifying-signatures) for implementation examples.
 
-## API key scoping
+## API keys
 
 | Key type | Prefix | Scope |
 |----------|--------|-------|
-| Organization key | `aat_` | Server-to-server operations for the org |
-| Personal key | `gpat_` | Scoped to a single user |
+| Organization key | `aat_` | Server-to-server operations for the organization |
+| Personal key | `gpat_` | Issued to a single user |
 
-API keys are for backend integrations only — never embed them in client apps.
+API keys are for backend integrations only — never embed them in a shipping client app.
+
+Each key carries a set of **scopes** that bound what it can do, granted per area: `analytics:*`, `devices:*`, `claims:*`, `apps:*`, `flags:*`, `feedback:*`, `vrt:*`, `webhooks:*`, `org:*`, `keys:*`, `alerts:*`, and `release_notes:*`. A key can only create another key with scopes it holds itself. The secret is shown once at creation and stored hashed; rotate or revoke it from **API Keys** in the dashboard.
 
 ## Data handling
 
-- **Attestation data** is stored per-tenant and scoped to your account. No cross-tenant data access is possible.
-- **Device identifiers** are derived from App Attest key IDs, not hardware identifiers. They cannot be used to track users across apps.
-- **No PII is collected** by the SDK. Device model, OS version, and app version are the only device properties sent.
+- **Attestation data** is stored per-organization. No cross-organization data access is possible.
+- **Device identity** comes from the App Attest key id, not a hardware identifier. It is scoped to your app, so it cannot be used to track a user across apps.
+- **Device fingerprint** — the SDK sends a SHA-256 hash of `identifierForVendor` so a device that regenerates its App Attest key is still counted as one Monthly Active Device. The raw identifier is never transmitted.
+- **Device properties** sent by the SDK are device model, OS version, app version, and build number. The API additionally records the request IP address and `User-Agent`; both are exposed as JWT claims on Enterprise only.
 - **Support ticket emails** are optional and stored only for reply notifications.
 
 ## Multi-tenancy isolation
 
-All data is scoped to your tenant at the database level. Every query filters by tenant ID. There is no shared data between tenants.
+All data is scoped to your organization at the database level, and every query filters by organization id.
 
 ## Role-based access
 
-Dashboard access is controlled by roles:
+Dashboard access is controlled by four roles, ordered `viewer` < `member` < `admin` < `owner`:
 
 | Role | Access level |
 |------|-------------|
-| Owner | Full access including account deletion |
-| Admin | Manage members, settings, API keys |
-| Member | Create and manage projects |
+| Owner | Everything, including deleting the organization |
+| Admin | Manage members, settings, API keys, webhooks, claims, and flags |
+| Member | Register apps and edit flags, claims, and webhooks |
 | Viewer | Read-only |
 
-All role changes and security-relevant actions are recorded in the [audit log](/dashboard/overview).
+A role is fixed at invite time and can't be changed afterwards. Role and membership changes, key creation, webhook changes, and billing actions are all recorded in the [audit log](/dashboard/settings#audit-log).
 
 ## Transport security
 
-All communication between the SDK and Grantiva servers uses TLS 1.2+. The SDK enforces certificate validation — no certificate pinning bypass is possible.
+All communication between the SDK and Grantiva uses HTTPS, and the SDK relies on the system URL loading stack for TLS and certificate validation. Grantiva does not ship certificate pinning today.
 
 ## Responsible disclosure
 
-If you discover a security vulnerability, please email [security@grantiva.io](mailto:security@grantiva.io). We take all reports seriously and will respond promptly.
+If you discover a security vulnerability, email [security@grantiva.io](mailto:security@grantiva.io). We take all reports seriously and will respond promptly.

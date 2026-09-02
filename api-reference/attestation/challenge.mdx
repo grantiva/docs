@@ -22,14 +22,14 @@ GET /api/v1/attestation/challenge
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `device_id` | `string` | Optional device identifier |
+| `device_id` | `string` | Optional device identifier. Stored with the challenge and echoed into the `deviceId` claim of the token minted by [validate](/api-reference/attestation/validate) |
 
 ## Response
 
 ```json
 {
   "challenge": "a1b2c3d4e5f6...",
-  "expiresAt": "2025-03-10T12:05:00Z"
+  "expiresAt": "2026-03-10T12:05:00Z"
 }
 ```
 
@@ -38,4 +38,16 @@ GET /api/v1/attestation/challenge
 | `challenge` | `string` | Cryptographic challenge token |
 | `expiresAt` | `string` | ISO 8601 expiration timestamp |
 
-Challenges expire after a short window. The SDK handles expiration and retries automatically.
+Challenges are single-use and expire after 5 minutes by default. The SDK handles expiration and retries automatically.
+
+## Errors
+
+| Status | Code | Meaning |
+|--------|------|---------|
+| 400 | `bad_request` | Missing `X-Bundle-ID` or `X-Team-ID` header |
+| 402 | `quota_exceeded` | Monthly active device limit reached and the grace period has expired. The check runs here so the SDK fails before spending a challenge. Response includes `limit`, `current`, and `upgradeUrl` |
+| 403 | `forbidden` | Organization account is not active |
+| 404 | `not_found` | No active app registered for this Bundle ID + Team ID pair |
+| 429 | `rate_limited` | Per-IP limit or the per-tenant `challenge` bucket. Check `Retry-After` and the `X-RateLimit-*` headers |
+
+Both a per-IP limit and the per-tenant `challenge` bucket apply to this endpoint — see [API Conventions](/api-reference/conventions#rate-limiting).

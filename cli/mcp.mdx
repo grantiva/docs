@@ -114,10 +114,10 @@ Both rules run by default; override the set with `a11y.rules` in `grantiva.yml`.
 |------|---------|-----------|
 | `grantiva_sim_list` | List available simulators with name, UDID, state, and runtime. | `filter` — `all` (default), `booted`, `shutdown` |
 | `grantiva_sim_boot` | Boot a simulator by name or UDID. | `name` (default `iPhone 16`) |
-| `grantiva_sim_ensure` | Create or idempotently reuse an exact named simulator. | `name`, `device_type`, `runtime` (all required); `boot` |
+| `grantiva_sim_ensure` | Create or idempotently reuse an exact named simulator. | `name` (required); `device_type`, `runtime`, `boot` |
 | `grantiva_sim_delete` | Delete one simulator by exact name or UDID. | `name` (required) |
 
-`runtime` accepts a runtime name, a version, an identifier, or `latest`.
+`name` alone is enough for `grantiva_sim_ensure`: the device type is read out of the name, the newest installed iOS runtime is used, and the device is booted. `device_type` and `runtime` pin them explicitly; `runtime` accepts a runtime name, a version, an identifier, or `latest`.
 
 ### Scripting
 
@@ -210,4 +210,8 @@ A typical agent session — build the app, get it onto a device, walk a flow, an
   </Step>
 </Steps>
 
-For a fully scripted, non-agent version of the same pipeline, see [`grantiva ci run`](/cli/commands) and [CI integration](/cli/ci-integration).
+For a fully scripted, non-agent version of the same pipeline, see [`grantiva ci run`](/cli/commands#grantiva-ci-run) and [CI integration](/cli/ci-integration).
+
+<Note>
+The MCP server covers local automation only. To let an agent manage your dashboard — flip a flag, read the analytics, review a VRT run — give it the [console commands](/cli/console), which all take `--json`.
+</Note>

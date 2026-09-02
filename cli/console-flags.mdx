@@ -1,0 +1,352 @@
+---
+title: "Console: feature flags"
+description: "Manage feature flags, environments, targeting rules, and overrides from the terminal"
+---
+
+`grantiva console flags` (alias `featureflags`) manages flags; `grantiva console envs` manages the environments a flag holds values in.
+
+Flags are addressable by `flag_key` everywhere, and by UUID too. Every command takes `--json`, and destructive verbs need `--yes` when stdin is not a TTY.
+
+## Flags
+
+### `grantiva console flags list`
+
+List all feature flags.
+
+```bash
+grantiva console flags list [--app APP_ID] [--env ENV] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--app` | Only flags scoped to this app ID. |
+| `--env` | Show default values for this environment. |
+
+Needs `flags:read`.
+
+```bash
+grantiva console flags list --env staging
+```
+
+### `grantiva console flags get`
+
+Show one flag in detail, including its rules and overrides.
+
+```bash
+grantiva console flags get <key> [--json]
+```
+
+Needs `flags:read`.
+
+### `grantiva console flags create`
+
+Create a feature flag.
+
+```bash
+grantiva console flags create <key> --name NAME --type bool|string|int|json
+                             [--value VALUE] [--env-value ENV=VALUE]...
+                             [--app APP_ID] [--off] [--description TEXT] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Human-readable flag name. Required. |
+| `--type` | Value type: `bool`, `string`, `int`, or `json`. Required. |
+| `--value` | On-value applied to every environment. |
+| `--env-value` | Per-environment on-value as `<environment>=<value>`. Repeatable; wins over `--value` for that environment. |
+| `--app` | Scope the flag to this app ID. Default is org-wide. |
+| `--off` | Create the flag inactive. |
+| `--description` | Flag description. |
+
+The key is lowercase letters, numbers, and underscores. Values are validated against the declared type before the request — a `bool` flag rejects anything but `true`/`false`, an `int` rejects a non-integer, a `json` flag rejects a document that will not parse.
+
+Needs `flags:write`.
+
+```bash
+grantiva console flags create dark_mode --name "Dark Mode" --type bool \
+  --value false --env-value staging=true
+```
+
+### `grantiva console flags update`
+
+Update a flag's name, description, or per-environment values.
+
+```bash
+grantiva console flags update <key> [--name NAME] [--description TEXT]
+                             [--env-value ENV=VALUE]... [--json]
+```
+
+Needs `flags:write`.
+
+### `grantiva console flags on` / `off`
+
+Turn a flag on or off, everywhere or in one environment.
+
+```bash
+grantiva console flags on  <key> [--env ENV] [--json]
+grantiva console flags off <key> [--env ENV] [--json]
+```
+
+Needs `flags:write`.
+
+```bash
+grantiva console flags off checkout_v2 --env production
+```
+
+### `grantiva console flags delete`
+
+Delete a flag, its rules, and its overrides.
+
+```bash
+grantiva console flags delete <key> [--yes] [--json]
+```
+
+Needs `flags:write`.
+
+### `grantiva console flags history`
+
+Show a flag's change history.
+
+```bash
+grantiva console flags history <key> [--limit N] [--offset N] [--json]
+```
+
+Needs `flags:read`.
+
+### `grantiva console flags eval`
+
+Dry-run a flag against a simulated device and show the full rule trace.
+
+```bash
+grantiva console flags eval <key> [--device-model MODEL] [--os-version VERSION]
+                           [--app-version VERSION] [--device-id ID] [--risk-score N]
+                           [--locale LOCALE] [--country CC] [--user-id ID]
+                           [--attestation-status STATUS] [--custom KEY=VALUE]...
+                           [--env ENV] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--device-model` | Device model, e.g. `iPhone16,1`. |
+| `--os-version` | OS version, e.g. `18.1.2`. |
+| `--app-version` | App version, e.g. `2.1.0`. |
+| `--device-id` | Stable device identifier. This is what drives rollout bucketing. |
+| `--risk-score` | Risk score 0–100. |
+| `--locale` | Locale, e.g. `en_US`. |
+| `--country` | Country code, e.g. `US`. |
+| `--user-id` | Application-level user identifier. |
+| `--attestation-status` | `attested`, `unattested`, or `expired`. |
+| `--custom` | Custom attribute as `<key>=<value>`. Repeatable. |
+| `--env` | Environment to evaluate in. Default `production`. |
+
+The flag is evaluated exactly as the SDK endpoint would for a device with those attributes, without recording an evaluation. Every targeting rule is printed in priority order with per-condition expected vs actual, so you can see which condition rejected the device.
+
+Needs `flags:read`.
+
+```bash
+grantiva console flags eval dark_mode --os-version 18.1 --country US \
+  --risk-score 12 --custom beta_group=internal
+```
+
+### `grantiva console flags watch`
+
+Stream live flag configuration updates over SSE. Ctrl-C to stop.
+
+```bash
+grantiva console flags watch [--env ENV] [--json]
+```
+
+One line is printed per server push: the current configuration immediately on connect, then again on every flag change. With `--json` each line is one compact NDJSON document of the form `{"event": …, "data": …}`.
+
+Needs `flags:read`.
+
+```bash
+grantiva console flags watch --env production --json | jq -r '.data.flags | keys[]'
+```
+
+## Targeting rules
+
+Rules are evaluated in priority order. The first rule whose conditions all pass — and whose rollout bucket accepts the device — decides the flag's value.
+
+Conditions are given as repeated `--when <attribute>:<operator>:<value>`, or as a `--conditions-json` array of `{attribute, operator, value}` objects.
+
+**Operators:** `eq`, `neq`, `gt`, `gte`, `lt`, `lte`, `in`, `not_in`, `contains`, `starts_with`. For `in` and `not_in`, comma-separate the values.
+
+**Attributes:** `os_version`, `device_model`, `app_version`, `risk_score`, `locale`, `country`, `device_id`, `user_id`, `attestation_status`, or `custom.<key>`.
+
+### `grantiva console flags rules list`
+
+```bash
+grantiva console flags rules list <key> [--json]
+```
+
+Needs `flags:read`.
+
+### `grantiva console flags rules add`
+
+Add a targeting rule, appended at the lowest priority.
+
+```bash
+grantiva console flags rules add <key> --name NAME --value VALUE
+                                [--when ATTR:OP:VALUE]... [--conditions-json JSON]
+                                [--rollout 0-100] [--inactive] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--name` | Rule name. Required. |
+| `--value` | Value the flag resolves to when this rule matches. Required. |
+| `--when` | Condition as `<attribute>:<operator>:<value>`. Repeatable. |
+| `--conditions-json` | Conditions as a JSON array of `{attribute, operator, value}`. |
+| `--rollout` | Rollout percentage 0–100. Default `100`. |
+| `--inactive` | Create the rule inactive. |
+
+Needs `flags:write`.
+
+```bash
+grantiva console flags rules add dark_mode --name "Recent iOS, North America" \
+  --value true --when os_version:gte:18.0 --when country:in:US,CA --rollout 25
+```
+
+### `grantiva console flags rules update`
+
+```bash
+grantiva console flags rules update <key> <rule-id> [--name NAME] [--value VALUE]
+                                   [--when ATTR:OP:VALUE]... [--conditions-json JSON]
+                                   [--rollout 0-100] [--active | --inactive] [--json]
+```
+
+`--when` and `--conditions-json` **replace** the rule's conditions rather than adding to them. Rule IDs come from `rules list`.
+
+Needs `flags:write`.
+
+### `grantiva console flags rules delete`
+
+```bash
+grantiva console flags rules delete <key> <rule-id> [--yes] [--json]
+```
+
+Needs `flags:write`.
+
+### `grantiva console flags rules reorder`
+
+Set the whole priority order at once.
+
+```bash
+grantiva console flags rules reorder <key> <rule-id> [<rule-id>...] [--json]
+```
+
+Pass every rule ID in the desired order — index 0 evaluates first.
+
+Needs `flags:write`.
+
+<Note>
+Targeting rules are limited per flag by plan. On a plan whose limit is zero, `rules add` returns a 403 carrying the server's own explanation (`Targeting rule limit reached…`), not a scope error.
+</Note>
+
+## Per-device overrides
+
+An override pins a flag to a fixed value for one device, by its App Attest key ID, taking precedence over every targeting rule. It is the support and QA path: force a flag on for one tester's device without touching rules.
+
+### `grantiva console flags overrides list`
+
+```bash
+grantiva console flags overrides list <key> [--json]
+```
+
+Needs `flags:read`.
+
+### `grantiva console flags overrides add`
+
+```bash
+grantiva console flags overrides add <key> --device KEY_ID --value VALUE
+                                    [--expires-at ISO8601] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--device` | Device key ID to override for. Required. |
+| `--value` | Value to force for this device. Required. |
+| `--expires-at` | Expiry as an ISO 8601 timestamp. Default: never expires. |
+
+Needs `flags:write`.
+
+```bash
+grantiva console flags overrides add dark_mode \
+  --device 5PZQ8kLm... --value true --expires-at 2026-12-31T23:59:59Z
+```
+
+### `grantiva console flags overrides delete`
+
+```bash
+grantiva console flags overrides delete <key> <override-id> [--yes] [--json]
+```
+
+Override IDs come from `overrides list`.
+
+Needs `flags:write`.
+
+## Environments
+
+`grantiva console envs` manages the environments a flag holds separate values in. Environments are addressable by slug or UUID.
+
+### `grantiva console envs list`
+
+List environments in sort order.
+
+```bash
+grantiva console envs list [--json]
+```
+
+Needs `flags:read`.
+
+### `grantiva console envs create`
+
+```bash
+grantiva console envs create <name> [--color HEX] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--color` | Display color as a hex code, e.g. `#f59e0b`. |
+
+Needs `flags:write`.
+
+```bash
+grantiva console envs create "Staging" --color '#f59e0b'
+```
+
+### `grantiva console envs update`
+
+Rename or recolor an environment.
+
+```bash
+grantiva console envs update <env> [--name NAME] [--color HEX] [--json]
+```
+
+Needs `flags:write`.
+
+### `grantiva console envs delete`
+
+Delete an environment and its per-environment values.
+
+```bash
+grantiva console envs delete <env> [--yes] [--json]
+```
+
+Needs `flags:write`.
+
+### `grantiva console envs reorder`
+
+Move an environment up or down in the sort order.
+
+```bash
+grantiva console envs reorder <env> up|down [--json]
+```
+
+Needs `flags:write`.
+
+## Next steps
+
+- [Console overview](/cli/console) — auth, scopes, and shared conventions
+- [Feature flags concepts](/sdk/feature-flags) — how the SDK reads flags at runtime

@@ -3,18 +3,25 @@ title: "Feature Requests"
 description: "List and create feature requests"
 ---
 
+These endpoints are the end-user side of the Feedback module — what the SDK calls from inside your app. Staff actions (status changes, replies) live on the [console API](/api-reference/feedback/console).
+
+## Authentication
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-Bundle-ID` | Yes | App bundle identifier — scopes results to one app |
+| `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side/simulator callers. Identity headers alone return 401. See [Authentication](/api-reference/authentication) |
+
+API-key callers additionally need the `feedback:read` scope for reads and `feedback:write` for writes. Attestation JWTs are not scope-checked.
+
+---
+
 ## List feature requests
 
 ```
 GET /api/v1/feedback/features
 ```
-
-### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `X-Bundle-ID` | Yes | App bundle identifier |
-| `X-Team-ID` | Yes | Apple Developer Team ID |
 
 ### Query parameters
 
@@ -22,9 +29,9 @@ GET /api/v1/feedback/features
 |-----------|------|---------|-------------|
 | `page` | `int` | 1 | Page number |
 | `per` | `int` | 20 | Results per page (max 100) |
-| `sort` | `string` | — | `newest`, `oldest`, or `most_voted` |
-| `status` | `string` | — | Filter by status |
-| `voter_id` | `string` | — | Check if this user has voted |
+| `sort` | `string` | `newest` | `newest`, `oldest`, or `most_voted`. Unknown values fall back to `newest` |
+| `status` | `string` | — | Filter by status. Unknown values are ignored |
+| `voter_id` | `string` | — | Populates `hasVoted` for this voter |
 
 ### Response
 
@@ -32,15 +39,15 @@ GET /api/v1/feedback/features
 {
   "items": [
     {
-      "id": "uuid",
+      "id": "550e8400-e29b-41d4-a716-446655440000",
       "title": "Dark Mode Support",
       "description": "Please add dark mode...",
       "status": "open",
       "voteCount": 42,
       "hasVoted": true,
       "commentCount": 5,
-      "createdAt": "2025-03-01T12:00:00Z",
-      "updatedAt": "2025-03-10T08:00:00Z"
+      "createdAt": "2026-03-01T12:00:00Z",
+      "updatedAt": "2026-03-10T08:00:00Z"
     }
   ],
   "metadata": {
@@ -50,6 +57,20 @@ GET /api/v1/feedback/features
   }
 }
 ```
+
+`hasVoted` is `false` unless you pass `voter_id`.
+
+### Status values
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Newly submitted, not yet triaged. This is the status every new request starts in |
+| `open` | Accepted and open for votes |
+| `planned` | On the roadmap |
+| `in_progress` | Being built |
+| `shipped` | Released |
+| `declined` | Won't be built |
+| `duplicate` | Merged into another request |
 
 ---
 
@@ -72,8 +93,8 @@ POST /api/v1/feedback/features
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `title` | `string` | Yes | 3–200 characters |
-| `description` | `string` | Yes | 10–5,000 characters |
+| `title` | `string` | Yes | Non-empty after trimming, max 200 characters |
+| `description` | `string` | Yes | Non-empty after trimming, max 5,000 characters |
 | `submitterId` | `string` | Yes | User or device identifier |
 | `deviceHash` | `string` | No | Device hash for deduplication |
 | `pushToken` | `string` | No | Hex APNs token — subscribes this device to the request's thread channel so it's notified of admin replies. See [Push](/push/overview#feedback-push-integration) |
@@ -81,7 +102,9 @@ POST /api/v1/feedback/features
 
 ### Response
 
-Returns the created feature request object.
+The created feature request, with `status: "pending"` and `hasVoted: false`.
+
+Validation failures return `422` with a `fields` array naming `title` or `description`. See [API Conventions](/api-reference/conventions#error-envelope).
 
 ---
 
@@ -95,8 +118,10 @@ GET /api/v1/feedback/features/:featureId
 
 | Parameter | Type | Description |
 |-----------|------|-------------|
-| `voter_id` | `string` | Check if this user has voted |
+| `voter_id` | `string` | Populates `hasVoted` for this voter |
 
 ### Response
 
-Returns a single feature request object.
+A single feature request object. `404` if it doesn't exist in your organization — or, when identity headers are present, in that app.
+
+<Note>A personal API key (`gpat_`) must send `X-Bundle-ID` and `X-Team-ID` on list and get; without them the request returns `400`. Organization keys may omit them to read across every app.</Note>

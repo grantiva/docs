@@ -3,7 +3,7 @@ title: "Entitlement Configuration"
 description: "Configure Apple IAP and Stripe subscription ingestion for your organization"
 ---
 
-<Note>Requires the **Enterprise** plan and an **admin** dashboard session. Non-Enterprise organizations receive `403 Forbidden`.</Note>
+<Note>These endpoints require a dashboard session with organization context. Reads are open to any member; the update requires the **admin** role.</Note>
 
 ## Get configuration
 
@@ -32,7 +32,7 @@ GET /api/v1/org/entitlement-config
 }
 ```
 
-The Stripe signing secret is **never echoed** — `signingSecretSet` reports whether one is stored. `stripeWebhookPath` is the per-organization path to configure in your Stripe dashboard.
+`apple` and `stripe` are `null` until configured. The Stripe signing secret is **never echoed** — `signingSecretSet` reports whether one is stored. `stripeWebhookPath` is the per-organization path to configure in your Stripe dashboard.
 
 ## Update configuration
 
@@ -63,21 +63,88 @@ PUT /api/v1/org/entitlement-config
 
 | Field | Type | Notes |
 |-------|------|-------|
-| `enabled` | `boolean` | Master switch for ingestion |
+| `enabled` | `boolean` | Master switch for ingestion. Omit to leave unchanged |
 | `apple.bundleId` | `string` | Bundle ID Apple notifications are matched against |
 | `apple.products` | `object` | Map of Apple product id → `{ tier, interval }` |
-| `stripe.signingSecret` | `string` | Webhook signing secret from your Stripe endpoint. **Omit to keep the existing secret.** Stored encrypted (AES-256-GCM) |
+| `stripe.signingSecret` | `string` | Webhook signing secret from your Stripe endpoint. **Omit to keep the existing secret.** Stored encrypted |
 | `stripe.prices` | `object` | Map of Stripe price id → `{ tier, interval }` |
-| `clearApple` | `boolean` | Remove the Apple configuration |
-| `clearStripe` | `boolean` | Remove the Stripe configuration (including the stored secret) |
+| `clearApple` | `boolean` | Remove the Apple configuration. Ignored when `apple` is also present |
+| `clearStripe` | `boolean` | Remove the Stripe configuration, including the stored secret. Ignored when `stripe` is also present |
 
 `tier` is any string you choose — it flows verbatim into the JWT claim. `interval` must be `monthly` or `annual` (anything else returns `400`).
+
+Sending an `apple` or `stripe` object replaces that source's configuration wholesale — send the complete product or price map each time.
 
 ### Errors
 
 | Status | When |
 |--------|------|
 | 400 | Invalid `interval`, malformed product/price maps |
-| 403 | Organization is not on the Enterprise plan, or the session lacks the admin role |
+| 403 | The session lacks the admin role |
+| 404 | No organization context |
 
-Updates are recorded in the organization [audit log](/dashboard/overview) as `org.entitlement_config_updated`.
+Updates are recorded in the organization [audit log](/api-reference/org/settings#audit-log) as `org.entitlement_config_updated`.
+
+## Ingest events
+
+```
+GET /api/v1/org/entitlement-ingest-events
+```
+
+Recent inbound entitlement activity for the organization, newest first — both events that were applied and events that were permanently dropped, with the reason. Use it to answer "why didn't my entitlement land?" without server logs. Available to any org member.
+
+**Query parameters**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `limit` | 50 | 1–200 |
+
+### Response
+
+```json
+{
+  "events": [
+    {
+      "kind": "dropped",
+      "source": "apple",
+      "eventId": "5f1c1e8a-...",
+      "eventType": "DID_RENEW",
+      "reason": "unmapped_product",
+      "detail": "com.example.plus.weekly",
+      "createdAt": "2026-07-26T12:00:00Z"
+    },
+    {
+      "kind": "processed",
+      "source": "stripe",
+      "eventId": "evt_1AbCdE",
+      "eventType": "customer.subscription.updated",
+      "reason": null,
+      "detail": null,
+      "createdAt": "2026-07-26T11:58:00Z"
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `kind` | `processed` (entitlement state applied) or `dropped` (permanent no-op) |
+| `source` | `apple` or `stripe` |
+| `reason` | Drop reason, on dropped events only |
+
+**Drop reasons**
+
+| Reason | Meaning |
+|--------|---------|
+| `signature_invalid` | The webhook signature failed verification |
+| `ingestion_not_enabled` | Ingestion is off, or that source is not configured |
+| `replay` | The source event id was already processed — a benign redelivery |
+| `missing_transaction_info` | The Apple notification carried no `signedTransactionInfo` |
+| `transaction_verification_failed` | The inner transaction JWS failed verification |
+| `missing_app_account_token` | The Apple transaction had no `appAccountToken`, so there is no Subject to attach to |
+| `unmapped_product` | The Apple product id or Stripe price id has no tier mapping in your config |
+| `no_existing_entitlement` | A renewal-only notification arrived for a subscription never seen before |
+| `unhandled_event_type` | A notification type that carries no entitlement change |
+| `missing_subject` | A Stripe event could not be tied to a sharing unit (`client_reference_id` / metadata) |
+
+Drops that happen before an organization can be resolved — such as a notification whose outer signature fails — cannot be attributed and do not appear here. An Apple notification for a bundle ID that is registered to your organization but has ingestion switched off is still recorded, as `ingestion_not_enabled`.

@@ -1,0 +1,75 @@
+---
+title: "Feedback and support"
+description: "Triage the feature requests and support tickets your users file from inside your app"
+---
+
+Feature requests and support tickets submitted through the SDK land in two dashboard screens: **Feedback** and **Support**. This page covers the staff side. For the in-app side see [Feedback quick start](/quickstart-feedback) and [SDK feedback](/sdk/feedback).
+
+## Feedback
+
+**Feedback** lists feature requests, filterable by status chip and searchable by text.
+
+| Status | Meaning |
+|--------|---------|
+| `pending` | Submitted, not yet triaged |
+| `open` | Accepted and visible |
+| `planned` | Committed to, not started |
+| `in_progress` | Being built |
+| `shipped` | Released |
+| `declined` | Won't do |
+| `duplicate` | Folded into another request |
+
+Open a request to change its status, assign it to a team member, see its vote count and the submitter's email, and read or add comments. Shipped and declined requests show a callout explaining the outcome.
+
+Changing a status writes `feedback.status_changed` to the audit log; adding a staff comment writes `feedback.comment_added`.
+
+<Note>
+If your organization has a linked push app, replying on a request pushes a notification to every device subscribed to that request's thread. See [Push notifications](/push/overview#feedback-push-integration).
+</Note>
+
+### API
+
+```bash
+curl "https://api.grantiva.io/api/v1/org/feedback?status=open&sort=votes&per=50" \
+  -H "Authorization: Bearer aat_YOUR_ORG_KEY"
+```
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/org/feedback` | List, with `status`, `app_id`, `search`, `sort` (`votes`, `newest`, `oldest`), `page`, `per` |
+| `GET /api/v1/org/feedback/:featureId` | One request, with comments oldest first |
+| `POST /api/v1/org/feedback/:featureId/status` | Change status |
+| `POST /api/v1/org/feedback/:featureId/comments` | Comment as staff |
+
+Reads need `feedback:read`; staff actions need `feedback:manage`.
+
+## Support
+
+**Support** lists support tickets, searchable by text and filterable by status and priority.
+
+| Status | Meaning |
+|--------|---------|
+| `open` | Awaiting your team |
+| `awaiting_reply` | Awaiting the user |
+| `resolved` | Answered |
+| `closed` | Closed out |
+
+Priorities are `low`, `normal`, `high`, and `urgent`.
+
+Open a ticket to change its status or priority, assign it, and reply in the message thread. Comments and replies are attributed as either the user (submitted through the SDK) or admin (your team).
+
+### API
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/org/support` | List, with `status`, `priority`, `app_id`, `search`, `page`, `per` |
+| `GET /api/v1/org/support/:ticketId` | One ticket, with messages oldest first |
+| `POST /api/v1/org/support/:ticketId/status` | Change status |
+| `POST /api/v1/org/support/:ticketId/priority` | Change priority |
+| `POST /api/v1/org/support/:ticketId/messages` | Reply as staff |
+
+See the [feedback API reference](/api-reference/feedback/feature-requests) and [support tickets](/api-reference/feedback/support-tickets) for the user-facing endpoints.
+
+## Email notifications
+
+New requests, new tickets, replies, status changes, and vote thresholds each have their own organization-wide email toggle under **Settings**. See [Notification preferences](/dashboard/settings#notification-preferences).

@@ -15,17 +15,25 @@ Verify your environment:
 grantiva doctor
 ```
 
+Then extract the embedded UI automation runner:
+
+```bash
+grantiva runner install
+```
+
 ## 2. Authenticate
 
 ```bash
 grantiva auth login
 ```
 
-This opens your browser for login. For CI, use an API key:
+This opens your browser for login, and saves the credentials to `~/.grantiva/auth.json`. For CI, use an API key instead:
 
 ```bash
-grantiva auth login --api-key YOUR_API_KEY
+grantiva auth login --api-key gpat_your_key
 ```
+
+Or set `GRANTIVA_API_KEY` in the environment, which takes precedence over the saved file.
 
 ## 3. Initialize your project
 
@@ -34,7 +42,7 @@ cd /path/to/your/xcode/project
 grantiva init
 ```
 
-This creates `grantiva.yml` with auto-detected scheme and simulator settings.
+This creates `grantiva.yml`. The scheme is read from the name of the `.xcworkspace` or `.xcodeproj` in the directory, and the simulator defaults to `iPhone 16` — edit either if that is wrong.
 
 ## 4. Define your screens
 
@@ -106,7 +114,14 @@ jobs:
         run: grantiva ci run
 ```
 
-Results are posted as a GitHub Check Run on your pull request.
+Results are posted as a GitHub Check Run on your pull request when the GitHub App is configured. `grantiva ci run` exits `0` when every screen passes and `1` when any fails — the results are uploaded either way.
+
+Review the run from the terminal without leaving CI:
+
+```bash
+run_id=$(grantiva ci run --json | jq -r .run_id)
+grantiva console vrt runs get acme/my-app "$run_id"
+```
 
 ## How diffing works
 
@@ -127,7 +142,8 @@ diff:
 
 ## Next steps
 
-- [VRT Concepts](/concepts/vrt) — how the CLI driver works, baseline lifecycle, and CI vs local auth
-- [CLI Commands reference](/cli/commands)
-- [Configuration reference](/cli/configuration)
-- [CI Integration guide](/cli/ci-integration)
+- [VRT concepts](/concepts/vrt) — how the CLI driver works, the baseline lifecycle, and CI vs local auth
+- [Commands](/cli/commands) — every `grantiva` command and flag
+- [Configuration](/cli/configuration) — the full `grantiva.yml` reference
+- [CI integration](/cli/ci-integration) — GitHub Actions, pre-built binaries, and parallel runs
+- [VRT review](/cli/console-vrt) — accept, flag, and approve runs from the terminal

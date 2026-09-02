@@ -1,6 +1,10 @@
 ---
-title: "Compliance"
-description: "Get compliance and risk assessment reports"
+title: "Compliance & Risk"
+description: "Compliance reporting and risk assessment across your device fleet"
+---
+
+Both endpoints authenticate with an API key carrying the `analytics:read` scope (`X-API-Key`, or `Authorization: Bearer <key>`) and count against the `apikey` rate-limit bucket.
+
 ---
 
 ## Compliance report
@@ -9,37 +13,107 @@ description: "Get compliance and risk assessment reports"
 GET /api/v1/analytics/compliance
 ```
 
-### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `X-API-Key` | Yes | Your API key |
+Evaluates every device profile against your organization's compliance rules.
 
 ### Query parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `type` | `string` | `summary` | `summary` or `detailed` |
-| `period` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d` |
+| `type` | `string` | `summary` | Echoed back as `reportType`. Both values return the same fields |
+| `period` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d`. Anything else returns `400` |
 
 ### Response
 
-Returns a compliance report with compliant/non-compliant device counts, compliance rate, and violation details (in detailed mode).
+```json
+{
+  "tenantId": "550e8400-e29b-41d4-a716-446655440000",
+  "reportType": "summary",
+  "period": ["2026-02-08T12:00:00Z", "2026-03-10T12:00:00Z"],
+  "totalDevices": 1250,
+  "compliantDevices": 1230,
+  "nonCompliantDevices": 20,
+  "complianceRate": 98.4,
+  "violationSummary": { "jailbreakDetected": 3, "highRiskScore(82)": 1 },
+  "deviceCompliance": [
+    {
+      "keyId": "abc123keyid",
+      "deviceModel": "iPhone15,2",
+      "osVersion": "18.0",
+      "isCompliant": true,
+      "complianceScore": 100,
+      "violations": [],
+      "lastChecked": "2026-03-10T12:00:00Z"
+    }
+  ],
+  "generatedAt": "2026-03-10T12:00:00Z"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `period` | Two-element array: window start and generation time |
+| `complianceRate` | Percentage of devices passing all checks, 0–100 |
+| `violationSummary` | Counts keyed by violation, across non-compliant devices |
+| `deviceCompliance` | Per-device results, always included |
+
+Compliance is evaluated over at most 10,000 device profiles. Device profiles are not filtered by `period` — only the reported window is.
 
 ---
 
-## Risk assessment report
+## Risk assessment
 
 ```
 GET /api/v1/analytics/risk
 ```
 
+Risk banding across devices that attested inside the window.
+
 ### Query parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `timeRange` | `string` | `7d` | Time range for assessment |
+| `timeRange` | `string` | `7d` | `1d`, `7d`, `30d`, or `90d`. Anything else returns `400` |
 
 ### Response
 
-Returns risk distribution, trends, and high-risk device details.
+```json
+{
+  "tenantId": "550e8400-e29b-41d4-a716-446655440000",
+  "period": ["2026-03-03T12:00:00Z", "2026-03-10T12:00:00Z"],
+  "totalDevices": 890,
+  "averageRiskScore": 14.2,
+  "riskDistribution": { "low": 800, "medium": 60, "high": 25, "critical": 5 },
+  "highRiskDevices": [
+    {
+      "keyId": "abc123keyid",
+      "deviceModel": "iPhone13,2",
+      "riskScore": 88,
+      "jailbreakDetected": true,
+      "suspiciousEvents": 4,
+      "lastAttestation": "2026-03-09T22:10:00Z"
+    }
+  ],
+  "recentSecurityEvents": [
+    {
+      "eventType": "suspicious_activity",
+      "keyId": "abc123keyid",
+      "riskScore": 88,
+      "timestamp": "2026-03-09T22:10:00Z"
+    }
+  ],
+  "generatedAt": "2026-03-10T12:00:00Z"
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `riskDistribution` | Device counts by band: `low` 0–20, `medium` 21–50, `high` 51–75, `critical` 76–100 |
+| `highRiskDevices` | Every device in the `critical` band |
+| `recentSecurityEvents` | Up to 20 most recent suspicious-activity events |
+
+Capped at 10,000 device profiles.
+
+## See also
+
+- [Risk Scoring](/concepts/risk-scoring) — how a score is computed
+- [Devices](/api-reference/analytics/devices) — per-device compliance detail

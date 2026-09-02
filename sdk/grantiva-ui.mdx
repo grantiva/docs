@@ -6,7 +6,7 @@ description: "Drop-in SwiftUI views for feature requests and support tickets"
 GrantivaUI is a separate SwiftUI package that renders the [feedback service](/sdk/feedback) for you. Add a feedback portal — feature requests, voting, comments, and support tickets — to your app without writing the screens yourself.
 
 <Note>
-GrantivaUI currently covers **feedback and support only**. There are no attestation or feature flag components — call [`attest()`](/sdk/attestation) and the [flags API](/sdk/feature-flags) directly and build those surfaces yourself.
+GrantivaUI currently covers **feedback and support only**. There are no attestation or feature flag components — call [`validateAttestation()`](/sdk/attestation) and the [flags API](/sdk/feature-flags) directly and build those surfaces yourself.
 </Note>
 
 ## Requirements
@@ -19,18 +19,18 @@ GrantivaUI currently covers **feedback and support only**. There are no attestat
 ### Xcode
 
 1. Go to **File > Add Package Dependencies**
-2. Enter `https://github.com/grantiva/GrantivaUI`
+2. Enter `https://github.com/grantiva/ios-ui`
 3. Add `GrantivaUI` to your app target
 
 ### Package.swift
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/grantiva/GrantivaUI.git", from: "1.0.0")
+    .package(url: "https://github.com/grantiva/ios-ui.git", from: "1.0.3")
 ]
 ```
 
-GrantivaUI pulls in `grantiva/ios-sdk` itself, so you do not need to declare the SDK separately.
+GrantivaUI depends on `grantiva/ios-sdk` (2.0.1 or later) itself, so you do not need to declare the SDK separately. Add the product with `.product(name: "GrantivaUI", package: "ios-ui")`.
 
 ## Quick start
 

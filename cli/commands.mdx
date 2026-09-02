@@ -1,123 +1,256 @@
 ---
 title: "Commands"
-description: "Complete reference for all Grantiva CLI commands"
+description: "Complete reference for the grantiva CLI"
 ---
 
-All commands support `--json` for machine-readable output.
+The CLI is one binary, `grantiva`, with the current version reported by `grantiva --version`.
+
+Commands fall into three families:
+
+- **Local automation** — `build`, `run`, `hierarchy`, `record`, `simulator`, `runner`, `diff`, `ci`
+- **Your dashboard** — `console`, covered in [Console commands](/cli/console)
+- **Setup** — `init`, `doctor`, `auth`, `mcp`
+
+## Global flags
+
+Every command except `grantiva init` accepts `--json`. All commands accept `--verbose` and `--quiet`.
+
+| Flag | Description |
+|------|-------------|
+| `--json` | Print the result as JSON on stdout. Also suppresses progress narration. |
+| `--verbose` | Raise stderr diagnostics to debug level — timestamps, logger label, metadata, and every subprocess the CLI runs with its exit status. |
+| `--quiet` | Silence progress narration on stderr. Warnings and errors still print; stdout is untouched. |
+
+### stdout is the result, stderr is the commentary
+
+Anything you would capture or parse — a `--json` payload, the UDID from `simulator ensure`, a result table, a dumped hierarchy — goes to **stdout**, undecorated. Progress narration, warnings, and errors go to **stderr**. Both of these work, and neither sees the other's output:
+
+```bash
+udid=$(grantiva simulator ensure --name "iPhone 17 Pro")
+grantiva doctor --json | jq '.[] | select(.status == "error")'
+```
+
+Colour is emitted only when stdout is a terminal, and `NO_COLOR` suppresses it.
+
+### Exit codes
+
+`0` on success. `1` when the command's own verdict is a failure — a build error, a failing flow, a screen over threshold, a failing required `doctor` check, a webhook test the endpoint rejected — or when the command errored out. Invalid arguments exit non-zero before any work starts.
+
+---
+
+## `grantiva init`
+
+Generate `grantiva.yml` in the current directory.
+
+```bash
+grantiva init [--scheme SCHEME] [--bundle-id BUNDLE_ID]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--scheme` | Scheme name. Auto-detected from the workspace or project when omitted. |
+| `--bundle-id` | Bundle identifier. |
+
+This is the one command with no `--json`; it still takes `--verbose` and `--quiet`.
+
+---
+
+## `grantiva doctor`
+
+Check the environment and dependencies.
+
+```bash
+grantiva doctor [--json]
+```
+
+It reports on three sections:
+
+| Section | Checks |
+|---------|--------|
+| Required | Xcode (`xcode-select -p`, verified to exist), Xcode version, a booted simulator, the extracted runner |
+| Project | `grantiva.yml`, git repository |
+| Cloud | Grantiva auth, GitHub App configuration |
+
+Only a **required** check failing exits `1` — the optional checks (no booted simulator, no `grantiva.yml`, not authenticated) report a warning and are advisory. That makes `grantiva doctor || exit 1` a usable CI preflight.
+
+---
 
 ## `grantiva build`
 
-Build the app for a simulator using xcodebuild.
+Build the app for a simulator using `xcodebuild`.
 
 ```bash
 grantiva build [--scheme SCHEME] [--simulator SIMULATOR]
-               [--app-file PATH] [--no-build] [--json]
+               [--derived-data-path PATH] [--json]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--scheme` | Xcode scheme to build |
-| `--simulator` | Simulator name (e.g., "iPhone 16") |
-| `--app-file` | Path to a pre-built `.app` bundle or `.ipa` archive (skips build) |
-| `--no-build` | No-op pass-through (exits immediately) |
+| `--scheme` | Xcode scheme to build. Falls back to `grantiva.yml`. |
+| `--simulator` | Simulator name or UDID. Falls back to `grantiva.yml`. |
+| `--derived-data-path` | Write Xcode build products and intermediates to this DerivedData directory. |
 
 Boots the simulator, runs `xcodebuild`, and prints a build summary. Exits `1` on build failure.
 
+`--app-file` and `--no-build` belong to the commands that install and drive the app — `build install`, `run`, `ci run`, and `diff`. `grantiva build` always builds.
+
+<Note>
+`--derived-data-path` is available on every command that builds the app, accepts absolute or relative paths including paths with spaces, and overrides a `-derivedDataPath` value in `build_settings` when both are given.
+</Note>
+
 ---
 
-## `grantiva install`
+## `grantiva build install`
 
-Build, install, and launch the app on a simulator in one step.
+Build and install the app on a simulator, then optionally launch it.
 
 ```bash
-grantiva install [--scheme SCHEME] [--simulator SIMULATOR]
-                 [--bundle-id ID] [--app-file PATH] [--no-build] [--json]
+grantiva build install [--scheme SCHEME] [--simulator SIMULATOR] [--bundle-id ID]
+                       [--app-file PATH] [--no-build] [--derived-data-path PATH]
+                       [--no-launch] [--json]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--scheme` | Xcode scheme to build |
-| `--simulator` | Simulator name (e.g., "iPhone 16") |
-| `--bundle-id` | App bundle identifier (derived from `Info.plist` if using `--app-file`) |
-| `--app-file` | Path to a pre-built `.app` bundle or `.ipa` archive (skips build) |
-| `--no-build` | Skip building and installing — assumes the app is already on the simulator |
+| `--bundle-id` | App bundle identifier. Derived from `Info.plist` when `--app-file` is used. |
+| `--no-launch` | Install the app without launching it. |
 
 **What it does:**
+
 1. Boots the simulator
 2. Builds via `xcodebuild` (unless `--app-file` or `--no-build`)
-3. Installs via `simctl install`
-4. Launches via `simctl launch`
+3. Installs via `simctl`
+4. Launches, unless `--no-launch`
 
-This is the same build/install sequence used by `grantiva ci run`, useful for iterating locally without capturing screenshots.
+### Seeding fixtures before first launch
+
+`--no-launch` exists so a harness can seed the installed app's data container or defaults before the app starts. With `--json` the result carries the container path:
+
+```bash
+install_result="$(grantiva build install \
+  --scheme "My App" \
+  --simulator "$UDID" \
+  --bundle-id com.example.myapp \
+  --derived-data-path "/private/tmp/grantiva-$UDID/Derived Data" \
+  --no-launch \
+  --json)"
+
+data_container="$(jq -r '.dataContainerPath' <<<"$install_result")"
+# Seed files or defaults beneath "$data_container" here.
+
+grantiva run --no-build --flow .grantiva/flows/seeded-state.yaml \
+  --simulator "$UDID" --bundle-id com.example.myapp
+```
+
+The JSON result carries `status` (`installed` or `launched`), `scheme`, `bundleId`, `appPath`, `dataContainerPath`, and the selected simulator's `name` and `udid`. `dataContainerPath` is only resolved under `--json`.
 
 ---
 
 ## `grantiva run`
 
-Run Maestro flows against a simulator. Reports step pass/fail for each flow and captures a screenshot on failure. Supports agent-native workflows via `--keep-alive` and `--logs`.
+Run flows against a simulator. No visual regression — it reports step pass/fail and captures a screenshot on failure.
 
 ```bash
 grantiva run [--scheme SCHEME] [--simulator SIMULATOR] [--bundle-id ID]
-             [--app-file PATH] [--no-build] [--flow PATH]
-             [--keep-alive] [--logs] [--logs-predicate EXPR] [--logs-level LEVEL]
-             [--json]
+             [--app-file PATH] [--no-build] [--derived-data-path PATH]
+             [--flow PATH] [--env KEY=VALUE]... [--keep-alive]
+             [--logs] [--logs-predicate EXPR] [--logs-level LEVEL]
+             [--snapshot failure|trailing|full] [--continue-on-failure]
+             [--report-dir DIR] [--timeout SECONDS] [--ready-file PATH] [--json]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--scheme` | Xcode scheme to build |
-| `--simulator` | Simulator name (e.g., "iPhone 16") |
-| `--bundle-id` | App bundle identifier |
-| `--app-file` | Path to a pre-built `.app` bundle or `.ipa` archive (skips build) |
-| `--no-build` | Skip building and installing — assume the app is already on the simulator |
-| `--flow` | Run a single flow YAML file instead of all configured flows |
+| `--flow` | Run a single flow file instead of all configured flows. Skips `screens:` entirely. |
+| `--env` | Environment variable for the app under test, as `KEY=VALUE`. Repeatable. Forwarded through the flow's `launchApp` environment. |
 | `--keep-alive` | Hold the GrantivaAgent session open after flows complete so `grantiva hierarchy` can inspect UI state without relaunching. Release with Ctrl-C. |
-| `--logs` | Stream simulator app logs into this terminal, prefixed with `[log]`. Predicate auto-derived from the app's bundle ID. |
+| `--logs` | Stream simulator app logs into this terminal, prefixed with `[log]`. The predicate defaults to lines whose subsystem or process matches the app's bundle ID. |
 | `--logs-predicate` | Custom `NSPredicate` for `simctl log stream --predicate`. Implies `--logs`. |
-| `--logs-level` | Log level: `default` (warnings/errors/default), `info`, or `debug`. |
+| `--logs-level` | `default` (warnings/errors/default), `info`, or `debug`. Defaults to `default`. |
+| `--snapshot` | Snapshot policy: `failure` (default — one shot after the failure), `trailing` (last-good step plus the failure step), `full` (every step). |
+| `--continue-on-failure` | Keep running remaining flows after a failure. The default is fail-fast, matching CI semantics. |
+| `--report-dir` | Write the runner's `report.json` and assets to this directory so CI can upload it. Default: an ephemeral temp directory. |
+| `--timeout` | Max seconds to wait for the runner subprocess before killing it with `SIGTERM`. Default `600`. |
+| `--ready-file` | Write this file once the run reaches a terminal state, containing its status. |
 
 **What it does:**
+
 1. Boots the simulator.
-2. Builds, installs the app (unless `--app-file` or `--no-build`).
-3. Starts GrantivaAgent on the simulator. The flow drives the app — no pre-launch.
+2. Builds and installs the app (unless `--app-file` or `--no-build`).
+3. Starts GrantivaAgent on the simulator. The flow drives the app — there is no pre-launch, because a CLI-side launch creates a process WDA cannot control.
 4. If `--logs` is set, tees `xcrun simctl spawn log stream` output inline with the flow output.
-5. Runs all configured flows (or the single `--flow` file) and reports step pass/fail.
-6. On failure: captures a screenshot of the simulator's current state.
-7. If `--keep-alive`, writes a session file to `~/.grantiva/runner/sessions/<udid>.json` and blocks waiting for Ctrl-C so external tools can inspect the final state. Otherwise the GrantivaAgent session is torn down.
-8. Saves screenshots to `.grantiva/captures/` (not compared against any baseline).
+5. Runs all configured `screens:` first, then each file in `flows:` (or the single `--flow` file), reporting step pass/fail.
+6. On failure, captures a `simctl` screenshot of the simulator's current state.
+7. If `--keep-alive`, writes a session file to `~/.grantiva/runner/sessions/<udid>.json` and blocks waiting for Ctrl-C so external tools can inspect the final state. Otherwise the session is torn down.
+8. Saves screenshots to `.grantiva/captures/`, or to `<report-dir>/captures` when `--report-dir` is given.
 
-No authentication required. Useful for functional/smoke testing locally, CI pipelines that don't need visual regression, and agent-driven test authoring / selector repair.
+No authentication required. Exit code `0` if all steps pass, `1` if any fail.
 
-Exit code `0` if all steps pass, `1` if any fail.
+### Waiting on a run with `--ready-file`
+
+With `--keep-alive` the session deliberately outlives the flows, so process exit is not a completion signal, and `report.json` is rewritten incrementally. Wait on the ready file instead:
+
+```bash
+grantiva run --flow flows/advertise.yaml --keep-alive --ready-file /tmp/advertise.ready &
+while [ ! -f /tmp/advertise.ready ]; do sleep 0.2; done
+jq -r .status /tmp/advertise.ready   # passed | failed | interrupted
+```
+
+Two guarantees make that loop safe. The file is **deleted at startup**, before any project, build, or simulator work, so a file left by a previous run can never be read as this run's verdict — and an unwritable path is rejected immediately rather than at the end of a long suite. And it is **always written**: a failure before the runner starts (no project, bad scheme, build failure, no simulator) records `failed` rather than leaving that loop, which has no timeout, spinning until CI's global limit.
 
 ---
 
 ## `grantiva hierarchy`
 
-Dump the current UI hierarchy of a running simulator via an active keep-alive GrantivaAgent session. Read-only — no app relaunch, no state loss.
+Dump the UI hierarchy of a booted simulator without relaunching the app. Read-only — no launch, no `stopApp`, no `clearState`.
 
 ```bash
-grantiva hierarchy [--udid UDID] [--format xml|json] [--json]
+grantiva hierarchy [--udid UDID] [--format xml|json] [--timeout SECONDS] [--json]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--udid` | Target a specific simulator's session (defaults to the newest keep-alive session). |
-| `--format` | Output format: `xml` (default, unwrapped) or `json`. |
+| `--udid` | Target a specific simulator's session. Defaults to the newest keep-alive session. |
+| `--format` | `xml` (default, unwrapped) or `json`. |
+| `--timeout` | Seconds to wait for GrantivaAgent's page-source response. Default `60`. |
 
-**Requires** `grantiva run --keep-alive` to be running in another terminal (or a backgrounded process). If no keep-alive session is live, `grantiva hierarchy` fails with an actionable error rather than spinning up a fresh session (which would relaunch the app and destroy the state you wanted to inspect).
-
-**Typical agent workflow:**
+**Requires** `grantiva run --keep-alive` to be holding a session open in another shell or as a backgrounded CI process. If no keep-alive session is live, the command fails with an actionable error rather than spinning up a fresh session — which would relaunch the app and destroy the state you wanted to inspect.
 
 ```bash
-# Terminal 1 (or CI background):
+# Terminal 1 (or backgrounded in CI):
 grantiva run --keep-alive --logs --flow flows/onboarding.yaml
 
 # Terminal 2:
 grantiva hierarchy > state.xml
 ```
 
-The output is the full XCUI accessibility tree of the currently foregrounded view — element types, labels, identifiers, bounds, traits. Feed it to an agent to synthesize selectors, diagnose failures, or author new flows.
+The output is the accessibility tree of the currently foregrounded view — element types, labels, identifiers, bounds, traits.
+
+---
+
+## `grantiva record`
+
+Record a simulator and extract PNG frames at exact requested timestamps.
+
+```bash
+grantiva record --simulator SIMULATOR --duration SECONDS
+                [--output PATH] [--frames-at MS,MS,...] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--simulator` | Simulator name or UDID to record. Required. |
+| `--duration` | Recording duration in seconds. Required, must be greater than zero. |
+| `--output` | Output `.mov` path. Default `.grantiva/recordings/recording.mov`. |
+| `--frames-at` | Comma-separated frame timestamps in milliseconds, e.g. `0,150,300,600`. |
+
+The command boots the simulator, records with `simctl io recordVideo`, then extracts one PNG per requested timestamp with zero tolerance — the frame you asked for, not the nearest keyframe. Frames land in a `<output-basename>-frames/` directory next to the video, named `000150ms.png`. A JSON report is written alongside the video at `<output-basename>.json` with the requested and actual millisecond offsets per frame.
+
+```bash
+grantiva record --simulator "iPhone 17 Pro" --duration 3 --frames-at 0,500,1000,2500
+```
+
+Recording that ends before the last requested timestamp is an error, not a silent truncation.
 
 ---
 
@@ -127,45 +260,55 @@ Run the full visual regression pipeline: build, capture, compare, upload.
 
 ```bash
 grantiva ci run [--scheme SCHEME] [--simulator SIMULATOR] [--bundle-id ID]
-                [--app-file PATH] [--no-build] [--json]
+                [--app-file PATH] [--no-build] [--derived-data-path PATH] [--json]
 ```
 
-| Flag | Description |
-|------|-------------|
-| `--scheme` | Xcode scheme to build |
-| `--simulator` | Simulator name (e.g., "iPhone 16") |
-| `--bundle-id` | App bundle identifier |
-| `--app-file` | Path to a pre-built `.app` bundle or `.ipa` archive (skips build) |
-| `--no-build` | Skip building and installing — assume the app is already on the simulator |
-
 **What it does:**
-1. Boots simulator
-2. Builds the app (unless `--app-file` or `--no-build` is used)
+
+1. Boots the simulator
+2. Builds the app (unless `--app-file` or `--no-build`)
 3. Installs the app and starts GrantivaAgent
-4. Captures screenshots for all configured screens
+4. Captures screenshots for every screen in `screens:`
 5. Compares against baselines (pixel + perceptual)
-6. Uploads results to the Grantiva dashboard
-7. Posts a GitHub Check Run with results
+6. Uploads results to Grantiva
+7. Posts a GitHub Check Run when the GitHub App is configured
 
-When `--app-file` is provided, the binary is validated to be a simulator build and the bundle ID is derived from its `Info.plist` if not specified. `.ipa` archives are automatically extracted.
+When `--app-file` is provided, the binary is validated to be a simulator build, the bundle ID is derived from its `Info.plist` if not specified, and `.ipa` archives are extracted automatically.
 
-Exit code `0` if all screens pass, `1` if any fail.
+Requires authentication, and a git repository with an `origin` remote: the project slug is `owner/repo` parsed from `git remote get-url origin`, and the branch comes from `GITHUB_HEAD_REF` or `GITHUB_REF_NAME` when they are set, falling back to `git rev-parse --abbrev-ref HEAD`. That fallback is why the environment variables matter — GitHub Actions checks out in detached HEAD, where the git command returns `HEAD`.
+
+Exit code `0` if all screens pass, `1` if any fail — the results are uploaded either way.
+
+With `--json` the result is one object:
+
+```json
+{
+  "run_id": "0d0a0c9e-2f1b-4c0c-9a8b-7d5e3f1a2b4c",
+  "status": "completed",
+  "url": "https://grantiva.io/dashboard/vrt/runs/0d0a0c9e",
+  "branch": "feature/dark-mode",
+  "commit_sha": "9f2b1c4",
+  "trigger": "ci",
+  "screen_count": 12,
+  "passed_count": 10,
+  "failed_count": 1,
+  "new_count": 1,
+  "duration": 84.2
+}
+```
+
+Review the run from the terminal with [`grantiva console vrt`](/cli/console-vrt).
 
 ---
 
 ## `grantiva diff capture`
 
-Capture screenshots without comparing.
+Navigate to the configured screens and capture screenshots, without comparing.
 
 ```bash
-grantiva diff capture [--scheme SCHEME] [--simulator SIMULATOR]
-                      [--bundle-id ID] [--app-file PATH] [--no-build] [--json]
+grantiva diff capture [--scheme SCHEME] [--simulator SIMULATOR] [--bundle-id ID]
+                      [--app-file PATH] [--no-build] [--derived-data-path PATH] [--json]
 ```
-
-| Flag | Description |
-|------|-------------|
-| `--app-file` | Use a pre-built `.app` or `.ipa` instead of building |
-| `--no-build` | Skip building and installing (app must already be on simulator) |
 
 Saves `.png` files to `.grantiva/captures/`.
 
@@ -173,79 +316,47 @@ Saves `.png` files to `.grantiva/captures/`.
 
 ## `grantiva diff compare`
 
-Compare captures against baselines.
+Diff current captures against baselines.
 
 ```bash
-grantiva diff compare [--capture] [--app-file PATH] [--no-build]
-                      [--scheme SCHEME] [--simulator SIMULATOR]
-                      [--bundle-id ID] [--json]
+grantiva diff compare [--capture] [--scheme SCHEME] [--simulator SIMULATOR]
+                      [--bundle-id ID] [--app-file PATH] [--no-build]
+                      [--derived-data-path PATH] [--json]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--capture` | Capture fresh screenshots before comparing |
-| `--app-file` | Use a pre-built binary when capturing (requires `--capture`) |
-| `--no-build` | Skip build/install when capturing (requires `--capture`) |
+| `--capture` | Capture fresh screenshots before comparing, running the full build/install/navigate lifecycle. |
 
-Baselines are loaded from the Grantiva server (if authenticated) or `.grantiva/baselines/` locally. Diff images for failures are saved to `.grantiva/captures/diffs/`.
+Baselines are loaded from the Grantiva server when you are authenticated, or from `.grantiva/baselines/` locally. Diff images for failures are written to `.grantiva/captures/diffs/`.
 
 ---
 
 ## `grantiva diff approve`
 
-Promote current captures as new baselines.
+Promote current captures to baselines.
 
 ```bash
 grantiva diff approve [SCREEN_NAME ...] [--json]
 ```
 
-Pass specific screen names to approve selectively, or omit to approve all.
+Pass screen names to approve selectively, or omit them to approve all.
 
 ---
 
-## `grantiva auth login`
+## `grantiva simulator`
 
-Authenticate with Grantiva.
-
-```bash
-grantiva auth login [--api-key KEY] [--base-url URL] [--json]
-```
-
-Without `--api-key`, opens a browser login flow. With `--api-key`, validates the key directly. Credentials saved to `~/.grantiva/auth.json`.
-
----
-
-## `grantiva auth status`
-
-Show current authentication status.
+Provision, inspect, and tear down managed simulators.
 
 ```bash
-grantiva auth status [--json]
+grantiva simulator ensure --name NAME [--device-type TYPE] [--runtime RUNTIME] [--no-boot] [--json]
+grantiva simulator delete --name NAME [--json]
+grantiva simulator sessions [--json]
+grantiva simulator teardown (--session-id ID | --udid UDID) [--force] [--json]
+grantiva simulator cleanup [--json]
 ```
 
-Checks `GRANTIVA_API_KEY` env var first, then `~/.grantiva/auth.json`.
-
----
-
-## `grantiva auth logout`
-
-Remove stored credentials.
-
-```bash
-grantiva auth logout [--json]
-```
-
----
-
-## `grantiva doctor`
-
-Check environment and dependencies.
-
-```bash
-grantiva doctor [--json]
-```
-
-Verifies macOS version, Xcode, Swift, simulator availability, and command-line tools.
+`ensure` prints only the UDID on stdout, so `udid=$(grantiva simulator ensure --name "iPhone 17 Pro")` works directly. See [Simulator management](/cli/simulators) for the capacity model, leases, and reclaiming a stranded device.
 
 ---
 
@@ -261,6 +372,16 @@ Run once after installing or upgrading the CLI.
 
 ---
 
+## `grantiva runner version`
+
+Show the embedded runner version.
+
+```bash
+grantiva runner version [--json]
+```
+
+---
+
 ## `grantiva runner start`
 
 Start the runner with WebDriverAgent and keep it alive for interactive use.
@@ -271,13 +392,13 @@ grantiva runner start [--bundle-id ID] [--simulator SIMULATOR] [--detach] [--jso
 
 | Flag | Description |
 |------|-------------|
-| `--bundle-id` | App bundle identifier (reads from `grantiva.yml` if omitted) |
-| `--simulator` | Simulator name or UDID (reads from `grantiva.yml` if omitted) |
-| `--detach` | Detach the runner from the terminal using `nohup`. The process survives terminal closure. Prints the log file path on start. |
+| `--bundle-id` | App bundle identifier. Reads `bundle_id` from `grantiva.yml` if omitted. |
+| `--simulator` | Simulator name or UDID. Reads `simulator` from `grantiva.yml` if omitted, otherwise `iPhone 16`. |
+| `--detach` | Detach the runner process from this terminal so it survives the terminal closing. The log file path is printed on start — follow it with `tail -f <path>`. |
 
-Boots the simulator, launches WDA, and writes a session file so other commands can auto-detect the port. Use `grantiva runner dump-hierarchy` to inspect the view hierarchy while running.
+Boots the simulator, launches WDA, and writes a session file so other commands can auto-detect the port. If a session is already alive the command reports it and exits without starting a second one.
 
-With `--detach`, the runner is launched via `nohup` in its own shell session so it keeps running after the terminal closes. The log file path is printed on startup — tail it with `tail -f <path>` to follow runner output.
+The session holds the simulator lease for its whole life, so a concurrent `grantiva run` on the same simulator cannot tear it down. `grantiva runner stop` releases the lease.
 
 ---
 
@@ -293,28 +414,71 @@ grantiva runner stop [--json]
 
 ## `grantiva runner dump-hierarchy`
 
-Dump the view hierarchy from a running app.
+Dump the view hierarchy from a running app, for agent inspection.
 
 ```bash
-grantiva runner dump-hierarchy [--port PORT] [--format FORMAT] [--json]
+grantiva runner dump-hierarchy [--port PORT] [--format tree|json|xml] [--json]
 ```
 
 | Flag | Description |
 |------|-------------|
-| `--port` | WDA port (auto-detected from active session if omitted) |
-| `--format` | Output format: `tree` (default), `json`, or `xml` |
+| `--port`, `-p` | WDA port. Auto-detected from the active session if omitted. |
+| `--format`, `-f` | `tree` (default), `json`, or `xml`. |
 
-Requires an active session started with `grantiva runner start`.
+Requires a session started with `grantiva runner start`. To read the hierarchy of a `grantiva run --keep-alive` session instead, use [`grantiva hierarchy`](#grantiva-hierarchy).
 
 ---
 
-## `grantiva runner version`
+## `grantiva auth login`
 
-Show the embedded runner version.
+Authenticate with Grantiva.
 
 ```bash
-grantiva runner version [--json]
+grantiva auth login [--api-key KEY] [--base-url URL] [--json]
 ```
+
+| Flag | Description |
+|------|-------------|
+| `--api-key` | Validate this key directly and skip the browser flow. |
+| `--base-url` | API base URL. Default `https://api.grantiva.io`. |
+
+Without `--api-key`, the CLI creates a login session, opens your browser, and polls for up to 5 minutes. Either way the credentials are written to `~/.grantiva/auth.json` with mode `0600` — the file holds a plaintext API key.
+
+---
+
+## `grantiva auth status`
+
+Show the current authentication status.
+
+```bash
+grantiva auth status [--json]
+```
+
+Checks `GRANTIVA_API_KEY` first, then `~/.grantiva/auth.json`. The JSON result reports `source` as `env` or `file`.
+
+---
+
+## `grantiva auth logout`
+
+Remove the stored credentials.
+
+```bash
+grantiva auth logout [--json]
+```
+
+This deletes `~/.grantiva/auth.json`. It does not affect `GRANTIVA_API_KEY` in your environment.
+
+---
+
+## `grantiva console`
+
+Manage your Grantiva dashboard from the terminal — feature flags, apps, claims, devices, analytics, VRT review, release notes, feedback, support, webhooks, alerts, API keys, team, audit log, and org settings.
+
+```bash
+grantiva console <area> <command> [...]
+```
+
+See [Console commands](/cli/console).
 
 ---
 
@@ -326,16 +490,4 @@ Start the Grantiva MCP server for AI agent integration.
 grantiva mcp
 ```
 
-Runs an MCP-compatible server that exposes the live view hierarchy and device state as resources, enabling AI coding assistants to query the running app.
-
----
-
-## `grantiva init`
-
-Generate a `grantiva.yml` configuration file.
-
-```bash
-grantiva init [--scheme SCHEME] [--bundle-id BUNDLE_ID]
-```
-
-Auto-detects workspace/project and scheme if not specified.
+Speaks MCP over stdio, so your MCP client normally launches it for you. See [MCP server](/cli/mcp).

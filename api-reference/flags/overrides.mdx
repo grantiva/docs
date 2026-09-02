@@ -7,7 +7,9 @@ Overrides pin a flag to a fixed value for a single device — useful for QA test
 
 ## Authentication
 
-Override endpoints are part of the dashboard API and require a dashboard session (cookie-based). Listing requires any organization role (viewer+); creating and deleting require **Member** role or above.
+The endpoints below are part of the dashboard API and require a dashboard session (cookie-based). Listing requires any organization role (viewer+); creating and deleting require **Member** role or above.
+
+The same operations are available to API keys under `/api/v1/org/flags/:flagRef/overrides` with the `flags:read` / `flags:write` scopes — see [Manage Flags](/api-reference/flags/manage#overrides). That surface uses snake_case field names (`device_key_id`, `forced_value`, `expires_at`) and accepts a flag key as well as a UUID.
 
 ---
 

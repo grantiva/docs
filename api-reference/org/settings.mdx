@@ -1,11 +1,29 @@
 ---
 title: "Organization Settings"
-description: "Org settings, notification preferences, billing, audit log, and deletion"
+description: "Org settings, usage, notification preferences, billing, audit log, and deletion"
 ---
 
 ## Authentication
 
-All endpoints require a dashboard session (cookie-based) with organization context. Role requirements vary per endpoint and are noted below. Roles from lowest to highest: **Viewer**, **Member**, **Admin**, **Owner**.
+Most endpoints on this page accept either a dashboard session cookie or a server API key sent as `Authorization: Bearer <key>`. A few need a real session and are marked **session only**.
+
+| Endpoint | Session role | Key scope |
+|----------|--------------|-----------|
+| `GET /api/v1/org/settings` | Any member | `org:read` |
+| `PUT /api/v1/org/settings` | Admin | `org:write` |
+| `GET /api/v1/org/notification-preferences` | Any member | `org:read` |
+| `PATCH /api/v1/org/notification-preferences` | Admin | `org:write` |
+| `GET /api/v1/org/usage` | Any member | `org:read` |
+| `GET /api/v1/org/billing` | Admin | `admin:billing` |
+| `GET /api/v1/org/audit-log` | Admin | `admin:audit` |
+| `POST /api/v1/org/billing/portal-session` | Admin | Session only |
+| `GET /api/v1/org/quickstart-snippet` | Any member | Session only |
+| `DELETE /api/v1/org` | Owner | Session only |
+| `DELETE /api/v1/account` | Owner | Session only |
+
+Roles, lowest to highest: **Viewer**, **Member**, **Admin**, **Owner**.
+
+<Note>`admin:billing` and `admin:audit` are Enterprise-only scopes, so on other plans billing and the audit log are reachable with a dashboard session but not with an API key.</Note>
 
 ---
 
@@ -14,8 +32,6 @@ All endpoints require a dashboard session (cookie-based) with organization conte
 ```
 GET /api/v1/org/settings
 ```
-
-Available to any organization member.
 
 **Response**
 
@@ -34,8 +50,8 @@ Available to any organization member.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `serviceTier` | string | Display name: `Free`, `Pro`, `Business`, or `Enterprise` |
-| `serviceTierRawValue` | string | Raw tier value: `free`, `basic`, `professional`, `enterprise` (legacy: `growth`, `enterprise_plus`) |
+| `serviceTier` | string | Plan display name: `Free`, `Pro`, `Business`, or `Enterprise`. Show this one |
+| `serviceTierRawValue` | string | Internal tier identifier. Some organizations carry historical identifiers that no longer match the display name — never branch on this value |
 | `billingEmail` | string \| null | Billing contact, if set |
 
 ---
@@ -46,7 +62,7 @@ Available to any organization member.
 PUT /api/v1/org/settings
 ```
 
-Requires **Admin** role. Currently only the organization name can be changed; the URL slug is regenerated from the new name.
+Currently only the organization name can be changed; the URL slug is regenerated from the new name. An empty or whitespace-only name is ignored.
 
 **Request body**
 
@@ -60,6 +76,40 @@ Requires **Admin** role. Currently only the organization name can be changed; th
 
 ---
 
+## Usage
+
+```
+GET /api/v1/org/usage
+```
+
+The canonical Monthly Active Devices (MAD) meter for the organization. Values are cached for up to 5 minutes.
+
+**Response**
+
+```json
+{
+  "currentMAD": 48211,
+  "tierLimit": 250000,
+  "tierName": "Business",
+  "billingPeriodStart": "2026-07-01T00:00:00Z",
+  "billingPeriodEnd": "2026-08-01T00:00:00Z",
+  "usagePercent": 19.3,
+  "daysUntilReset": 6,
+  "resetDate": "2026-08-01"
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `currentMAD` | integer | Unique devices that attested at least once this billing period |
+| `tierLimit` | integer \| null | MAD cap for the plan; `null` on Enterprise (unlimited) |
+| `tierName` | string | Plan display name |
+| `usagePercent` | number \| null | Percentage of the cap consumed, one decimal; `null` when unlimited |
+| `daysUntilReset` | integer \| null | Calendar days until the period resets |
+| `resetDate` | string \| null | `YYYY-MM-DD` of the next reset (UTC) |
+
+---
+
 ## Notification preferences
 
 ### Get preferences
@@ -67,8 +117,6 @@ Requires **Admin** role. Currently only the organization name can be changed; th
 ```
 GET /api/v1/org/notification-preferences
 ```
-
-Available to any organization member.
 
 **Response**
 
@@ -94,7 +142,7 @@ Available to any organization member.
 PATCH /api/v1/org/notification-preferences
 ```
 
-Requires **Admin** role. Partial update — only fields present in the body are modified.
+Partial update — only fields present in the body are modified.
 
 | Field | Type | Description |
 |-------|------|-------------|
@@ -112,6 +160,12 @@ Requires **Admin** role. Partial update — only fields present in the body are 
 
 **Response** — `200 OK` — the full updated preferences object.
 
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | `featureVoteThresholdCount` outside 1–10000 |
+
 ---
 
 ## Billing
@@ -121,8 +175,6 @@ Requires **Admin** role. Partial update — only fields present in the body are 
 ```
 GET /api/v1/org/billing
 ```
-
-Requires **Admin** role.
 
 **Response**
 
@@ -140,11 +192,15 @@ Requires **Admin** role.
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `madUsed` | integer | Monthly Active Devices — unique devices that attested since the start of the current calendar month |
-| `madLimit` | integer \| null | Tier MAD limit; `null` means unlimited (Enterprise) |
+| `plan` | string | Plan display name |
+| `planRawValue` | string | Internal tier identifier — display `plan` instead |
+| `madUsed` | integer | Unique devices that attested since the start of the current calendar month |
+| `madLimit` | integer \| null | Plan MAD limit; `null` means unlimited (Enterprise) |
 | `currentPeriodEnd` | string \| null | End of the current billing period |
 | `stripeCustomerId` | string \| null | Present once the org has upgraded to a paid plan |
 | `stripeSubscriptionId` | string \| null | Active Stripe subscription, if any |
+
+<Note>`madUsed` here counts from the start of the calendar month. [`GET /api/v1/org/usage`](#usage) is the canonical meter and reports the org's billing period.</Note>
 
 ### Create a billing portal session
 
@@ -152,7 +208,7 @@ Requires **Admin** role.
 POST /api/v1/org/billing/portal-session
 ```
 
-Requires **Admin** role. Returns a short-lived, pre-authenticated Stripe Customer Portal URL where the user can view invoices, download receipts, and update the payment method. Open it directly in the browser.
+**Session only.** Requires **Admin** role. Returns a short-lived, pre-authenticated Stripe Customer Portal URL where the user can view invoices, download receipts, and update the payment method. Open it directly in the browser.
 
 **Response** — `200 OK`
 
@@ -177,7 +233,7 @@ Requires **Admin** role. Returns a short-lived, pre-authenticated Stripe Custome
 GET /api/v1/org/audit-log
 ```
 
-Requires **Admin** role. Paginated audit trail scoped to the current organization, newest first.
+Paginated audit trail scoped to the current organization, newest first.
 
 **Query parameters**
 
@@ -210,7 +266,17 @@ Requires **Admin** role. Paginated audit trail scoped to the current organizatio
 }
 ```
 
-Actions follow a `resource.verb` convention, e.g. `user.login`, `invite.created`, `apikey.rotated`, `webhook.updated`, `org.settings_updated`, `risk_alert_rule.created`.
+`metadata` on an entry is a flat string map, or `null`. Actions follow a `resource.verb` convention, for example:
+
+| Action | Recorded when |
+|--------|---------------|
+| `user.login`, `user.cli_login`, `user.cli_authorized` | Sign-in and CLI authorization |
+| `invite.created`, `invite.revoked`, `member.removed` | Team changes |
+| `apikey.created`, `apikey.rotated`, `apikey.revoked` | API key lifecycle |
+| `webhook.created`, `webhook.updated`, `webhook.deleted`, `webhook.delivery_retry` | Webhook changes |
+| `risk_alert_rule.created`, `risk_alert_rule.updated`, `risk_alert_rule.deleted` | Risk alert rules |
+| `release_note.created`, `release_note.published`, `release_note.unpublished`, `release_note.deleted` | Release notes |
+| `org.settings_updated`, `org.notification_preferences_updated`, `org.entitlement_config_updated` | Organization settings |
 
 ---
 
@@ -220,7 +286,7 @@ Actions follow a `resource.verb` convention, e.g. `user.login`, `invite.created`
 GET /api/v1/org/quickstart-snippet
 ```
 
-Available to any organization member. Returns the org's primary app credentials and a pre-filled Swift SDK initialization snippet, used by the dashboard's quick start page.
+**Session only.** Returns the org's primary app credentials and a pre-filled Swift SDK initialization snippet, used by the dashboard's quick start page.
 
 **Response**
 
@@ -248,9 +314,9 @@ Available to any organization member. Returns the org's primary app credentials 
 DELETE /api/v1/org
 ```
 
-Requires **Owner** role.
+**Session only.** Requires **Owner** role.
 
-<Warning>This permanently and immediately deletes the organization and **all** associated data in a single transaction — apps, devices, attestations, API keys, webhooks and deliveries, feature flags, custom claims, audit logs, support tickets, feature requests, invites, and memberships. Member user accounts are deactivated. This cannot be undone.</Warning>
+<Warning>This permanently and immediately deletes the organization and **all** associated data in a single transaction — apps, devices, attestations, challenges, API keys, webhooks and deliveries, feature flags and rules, custom claims, audit logs, heartbeats, support tickets, feature requests and votes, invites, and memberships. Member user accounts are deactivated and suspended. This cannot be undone.</Warning>
 
 The caller's session is destroyed as part of the request.
 
@@ -264,7 +330,7 @@ The caller's session is destroyed as part of the request.
 DELETE /api/v1/account
 ```
 
-Requires **Owner** role. Soft-deletes the current user's account:
+**Session only.** Requires **Owner** role. Soft-deletes the current user's account:
 
 - The account is marked pending deletion and **hard-deleted after 30 days**. Contact support@grantiva.io before then to cancel.
 - Any active Stripe subscription is cancelled.
@@ -284,5 +350,7 @@ Requires **Owner** role. Soft-deletes the current user's account:
 ## See also
 
 - [API Keys](/api-reference/org/api-keys)
+- [Team & Invites](/api-reference/org/team)
 - [Webhook Endpoints](/api-reference/webhooks/endpoints)
 - [Risk Alert Rules](/api-reference/org/risk-alerts)
+- [Attestation Failure Alerts](/api-reference/org/alerts)

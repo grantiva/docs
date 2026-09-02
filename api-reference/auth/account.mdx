@@ -63,6 +63,8 @@ Login, `me`, `verify-email`, `switch-org`, and `clear-org` all return the same s
 
 `organization` and `entitlements` are `null` when the user has no organization context. Null values inside `limits` mean unlimited.
 
+`organization.serviceTier` and `entitlements.tier` carry the internal tier identifier — display `entitlements.tierDisplay` (`Free`, `Pro`, `Business`, `Enterprise`) instead, and branch on the `features` booleans rather than on the tier string.
+
 ---
 
 ## Log in
@@ -117,11 +119,13 @@ Without a session, falls back to Bearer authentication for CLI/API keys (`aat_`,
 ```json
 {
   "email": "you@example.com",
-  "apiKeyPrefix": "gpat_1a2"
+  "api_key_prefix": "gpat_1a2"
 }
 ```
 
-`401` if neither a session nor a valid key is presented.
+`api_key_prefix` is the first 8 characters of the key. `email` is the email of the user who created the key, or the organization's name for an org key with no creator on record.
+
+`401` if neither a session nor a valid key is presented — including a Bearer token whose prefix is not a recognized key format.
 
 ---
 
