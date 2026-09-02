@@ -1,53 +1,106 @@
 ---
 title: "Webhooks"
-description: "Receive real-time notifications for device and attestation events"
+description: "Receive real-time notifications for device, flag, and subscription events"
 ---
 
 Webhooks send HTTP POST requests to your server when events occur in Grantiva. Available on **Pro, Business, and Enterprise** plans.
 
+## Endpoint limits
+
+| Plan | Webhook endpoints |
+|------|------------------:|
+| Free | Not available |
+| Pro | 3 |
+| Business | 10 |
+| Enterprise | Unlimited |
+
+Creating an endpoint on the Free plan returns a 403.
+
 ## Events
 
-| Event | Description |
-|-------|-------------|
-| `device.new` | First attestation from a new device |
-| `device.attested.first` | A device completes its first successful attestation |
-| `device.high_risk` | Device risk score exceeds your threshold |
-| `device.attestation_failed` | A device fails attestation validation |
-| `attestation.anomaly` | Unusual attestation pattern detected |
-| `flag.created` | A feature flag was created |
-| `flag.updated` | A feature flag's value or state changed |
-| `flag.deleted` | A feature flag was deleted |
-| `subscription.changed` | A subscription entitlement changed (Enterprise — see [Subscription Claims](/concepts/subscription-claims)) |
-| `subscription.expired` | An entitlement expired or was revoked |
-| `subscription.refunded` | An entitlement was refunded |
+| Event | Fires when |
+|-------|------------|
+| `device.new` | A device's first attestation (its lifetime attestation count is 1) |
+| `device.attested.first` | The first device ever attests for one of your apps — fires once per app |
+| `device.high_risk` | A device's risk score exceeds your threshold |
+| `device.attestation_failed` | Apple attestation validation fails for a device |
+| `attestation.anomaly` | One or more anomalies are detected on an attestation |
+| `flag.created` | A feature flag is created |
+| `flag.updated` | A feature flag is toggled or its configuration changes |
+| `flag.deleted` | A feature flag is deleted |
+| `subscription.changed` | A subscription entitlement changes — see [Subscription Claims](/concepts/subscription-claims) |
+| `subscription.expired` | An entitlement expires or is revoked |
+| `subscription.refunded` | An entitlement is refunded |
+
+Device and attestation events fire on paid plans only.
+
+<Note>
+The high-risk threshold is your organization's compliance `maxRiskScore`, defaulting to **50** when unset. The event payload carries the threshold that was applied.
+</Note>
 
 ## Setup
 
-Create webhook endpoints from the dashboard under **Settings > Webhooks**.
+Create webhook endpoints from **Webhooks** in the dashboard, or with [`POST /api/v1/org/webhooks`](/api-reference/webhooks/endpoints).
 
-1. Enter your endpoint URL (must be HTTPS)
-2. Select which events to subscribe to
-3. Save — Grantiva generates a signing secret (`whsec_...`)
+1. Enter your endpoint URL — use HTTPS, since the signing secret only protects integrity, not confidentiality
+2. Select which events to subscribe to (at least one)
+3. Save — Grantiva generates a signing secret (`whsec_...`) and returns it **once**, at creation
+
+An endpoint receives an event only if that event's name is in its subscription list and the endpoint is active.
 
 ## Payload format
+
+Every delivery is a JSON object with three top-level keys:
 
 ```json
 {
   "event": "device.high_risk",
-  "timestamp": "2025-03-10T12:00:00Z",
+  "timestamp": "2026-03-10T12:00:00Z",
   "data": {
-    "device_id": "abc123",
-    "risk_score": 82,
-    "jailbreak_detected": true,
-    "device_model": "iPhone15,2",
-    "os_version": "18.0"
+    "key_id": "SGVsbG8sIHdvcmxkIQ-keyId",
+    "device_id": "",
+    "risk_score": "82",
+    "threshold": "50"
   }
 }
 ```
 
+<Warning>
+**Every value inside `data` is a string.** Numbers and booleans are serialized as `"82"` and `"true"`, not `82` and `true`. Parse them on your side — `data.risk_score > 75` is a string comparison and will not do what you expect.
+</Warning>
+
+`timestamp` is ISO-8601 UTC. The body is serialized with sorted keys, so the bytes you receive are the bytes that were signed.
+
+### Fields per event
+
+| Event | `data` fields |
+|-------|---------------|
+| `device.new` | `key_id`, `device_id`, `device_model`, `os_version` |
+| `device.attested.first` | `app_id`, `bundle_id`, `team_id`, `device_risk_score` |
+| `device.high_risk` | `key_id`, `device_id`, `risk_score`, `threshold` |
+| `device.attestation_failed` | `key_id`, `bundle_id`, `reason` |
+| `attestation.anomaly` | `key_id`, `device_id`, `anomalies` (comma-separated list) |
+| `flag.created` / `flag.deleted` | `flag_key`, `tenant_id` |
+| `flag.updated` | `flag_key`, `is_active`, `tenant_id`, and `environment` on per-environment changes |
+| `subscription.*` | see [Subscription events](#subscription-events) |
+
+`key_id` is the App Attest key id — the stable per-device identifier, and the same value as the `sub` claim in the [attestation JWT](/concepts/jwt-claims). `device_id` is the optional device id supplied on the challenge request; the iOS SDK does not send it, so it is usually an empty string. Key your own records on `key_id`.
+
+`device_model` and `os_version` fall back to the literal string `"unknown"` when the SDK did not report them.
+
+## Request headers
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `application/json` |
+| `X-Grantiva-Signature` | `sha256=<hex HMAC-SHA256 of the raw body>` |
+| `X-Grantiva-Event` | The event name, e.g. `device.high_risk` |
+| `X-Grantiva-Delivery` | Unique delivery id — use it to dedupe retries |
+| `User-Agent` | `Grantiva-Webhooks/1.0` |
+
 ## Verifying signatures
 
-Every webhook request includes an `X-Grantiva-Signature` header containing an HMAC-SHA256 signature of the request body, signed with your endpoint's secret.
+The signature is an HMAC-SHA256 of the **raw request body** keyed with your endpoint's secret, hex-encoded and prefixed with `sha256=`.
 
 ```python
 import hmac
@@ -73,11 +126,11 @@ func verifyWebhook(body: Data, signature: String, secret: String) -> Bool {
 }
 ```
 
-Always verify signatures before processing webhook payloads.
+Always verify signatures before processing webhook payloads, and always sign the bytes you received — re-serializing the parsed JSON can change key order or spacing and break the comparison.
 
 ## Subscription events
 
-`subscription.changed` fires whenever a [subscription entitlement](/concepts/subscription-claims) materially changes (tier, status, interval, expiry, auto-renew, or product); identical redeliveries from Apple/Stripe do not re-fire it. `subscription.expired` additionally fires when status becomes `expired` or `revoked`, and `subscription.refunded` on refunds.
+`subscription.changed` fires whenever a [subscription entitlement](/concepts/subscription-claims) materially changes — tier, status, interval, expiry, auto-renew, or product. Identical redeliveries from Apple or Stripe do not re-fire it. `subscription.expired` additionally fires when status becomes `expired` or `revoked`, and `subscription.refunded` on refunds. All three carry the same `data`.
 
 ```json
 {
@@ -102,13 +155,31 @@ Always verify signatures before processing webhook payloads.
 Handling notes:
 
 - **Dedupe on `data.event_id`** and key any cache eviction by `data.subject_id`.
-- `expires_at` is **ISO-8601 here but epoch seconds in the JWT claim** — each surface follows its own convention.
+- `expires_at` is **ISO-8601 here but epoch seconds in the JWT claim** — each surface follows its own convention. It is an empty string when the source reports no expiry.
 - Treat the webhook as a cache-bust nudge: re-read the claim from the next JWT rather than trusting the webhook body as authoritative.
 
-## Retries
+## Delivery, retries, and history
 
-Failed deliveries (non-2xx response or timeout) are retried up to **3 times** with exponential backoff. You can view delivery history and response details in the dashboard.
+A delivery counts as successful on any **2xx** response. Anything else — a non-2xx status or a connection error — is a failure.
+
+Grantiva makes at most **3 delivery attempts**:
+
+| Attempt | When |
+|---------|------|
+| 1 | Immediately |
+| 2 | ~1 minute after the first failure |
+| 3 | ~5 minutes after the second failure |
+
+After the third failure the delivery is marked permanently failed. Retries are picked up by a background sweep, so the delays are lower bounds rather than exact times.
+
+Grantiva records the HTTP status, the first 1000 characters of your response body, and the error for every attempt. Read the history from the dashboard or [`GET /api/v1/org/webhooks/:id/deliveries`](/api-reference/webhooks/endpoints), and re-drive a failed one with `POST /api/v1/org/webhooks/:id/deliveries/:deliveryId/retry` — a manual retry resets the attempt counter and gets a fresh budget of 3.
+
+Delivery is fire-and-forget: a webhook that fails never fails the attestation or dashboard action that triggered it.
 
 ## Testing
 
-Send a test event from the webhook detail page in the dashboard (or `POST /api/v1/org/webhooks/:id/test`). This synchronously delivers a synthetic `attestation.completed` payload — signed like a real event — and reports the HTTP status your endpoint returned, so you can verify reachability and signature handling.
+Send a test event from the webhook detail page in the dashboard, or with `POST /api/v1/org/webhooks/:id/test`. This synchronously delivers a synthetic `attestation.completed` payload — signed like a real event — and reports the HTTP status, response body, and latency your endpoint returned, so you can verify reachability and signature handling.
+
+<Note>
+`attestation.completed` is a test-only event name. You cannot subscribe to it, and it is never delivered outside a test. The test delivery is not recorded in delivery history and is not retried.
+</Note>

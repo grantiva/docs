@@ -7,9 +7,12 @@ Each app is a unique **Bundle ID + Team ID** pair. Incoming attestations are mat
 
 <Info>App limits by tier: Free allows 2 apps, Pro allows 3, Business allows 10, Enterprise is unlimited.</Info>
 
-## Authentication
+## Two surfaces
 
-All app endpoints require an authenticated dashboard session (cookie-based).
+| Surface | Auth | Covers |
+|---------|------|--------|
+| `/api/v1/apps` | Dashboard session (cookie) | Everything below, including per-app JWT configuration, risk thresholds, and usage stats |
+| `/api/v1/org/apps` | API key with `apps:*` scopes, or a dashboard session | Registration and lifecycle only, with snake_case fields. See [Console API](#console-api) |
 
 ---
 
@@ -257,3 +260,97 @@ GET /api/v1/apps/:appID/usage
 ```
 
 `dailyUsage` is sorted newest-day first; `topDevices` is the 10 devices with the most attestations; `recentErrors` is the 10 most recent failed attestation events.
+
+---
+
+## Console API
+
+`/api/v1/org/apps` covers app registration and lifecycle for the CLI and scripts. It accepts an **API key** (`Authorization: Bearer gpat_…`/`aat_…`) as well as a dashboard session, and its wire format is snake_case.
+
+| Operation | Key scope | Session role |
+|-----------|-----------|--------------|
+| Read | `apps:read` | viewer+ |
+| Write | `apps:write` | admin+ |
+| Delete | `apps:delete` | admin+ |
+
+`:appRef` accepts either the app's UUID or its bundle ID (resolved within your organization). An unknown reference — including one belonging to another organization — returns `404`.
+
+### The console app object
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "app_name": "My App",
+  "bundle_id": "com.yourapp.example",
+  "team_id": "ABBM6U9RM5",
+  "description": "Production iOS app",
+  "is_active": true,
+  "is_primary": true,
+  "analytics_enabled": true,
+  "webhook_enabled": true,
+  "created_at": "2026-01-15T12:00:00Z",
+  "updated_at": "2026-07-01T08:30:00Z"
+}
+```
+
+JWT configuration and risk thresholds are not part of this surface — use `/api/v1/apps` for those.
+
+### Endpoints
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/api/v1/org/apps` | Array of app objects, primary first, then oldest first |
+| `POST` | `/api/v1/org/apps` | `201 Created` with the new app |
+| `GET` | `/api/v1/org/apps/:appRef` | One app object |
+| `PUT` | `/api/v1/org/apps/:appRef` | Partial update |
+| `DELETE` | `/api/v1/org/apps/:appRef` | `{ "deleted": true, "id": "…" }` |
+| `POST` | `/api/v1/org/apps/:appRef/activate` | Updated app object |
+| `POST` | `/api/v1/org/apps/:appRef/deactivate` | Updated app object |
+| `POST` | `/api/v1/org/apps/:appRef/set-primary` | Updated app object |
+
+### Create
+
+```bash
+curl -X POST https://api.grantiva.io/api/v1/org/apps \
+  -H "Authorization: Bearer aat_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "app_name": "My App",
+    "bundle_id": "com.yourapp.example",
+    "team_id": "ABBM6U9RM5",
+    "description": "Production iOS app",
+    "is_primary": false
+  }'
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `app_name` | string | Yes | Display name |
+| `bundle_id` | string | Yes | Reverse-DNS bundle identifier |
+| `team_id` | string | Yes | Apple Developer Team ID |
+| `description` | string | No | Free-form description |
+| `is_primary` | boolean | No | Defaults to `true` for the org's first app, `false` otherwise |
+
+### Update
+
+Only `app_name`, `description`, `analytics_enabled`, and `webhook_enabled` can change. Bundle ID and Team ID are immutable. A body with none of these returns `400`.
+
+```json
+{
+  "app_name": "My App (renamed)",
+  "description": "Updated description",
+  "analytics_enabled": true,
+  "webhook_enabled": false
+}
+```
+
+### Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Missing or empty name/bundle ID/team ID, invalid bundle ID format, or an update with no updatable fields |
+| 403 | App limit for your tier reached; deleting the last app; deleting or deactivating the primary app; setting an inactive app primary; or the key lacks the required scope |
+| 404 | No app matches `:appRef` in your organization |
+| 409 | This Bundle ID + Team ID combination is already registered (globally unique) |
+
+<Note>Deletion rules differ between the two surfaces. `/api/v1/org/apps` refuses to delete the primary app while other apps exist — set another app primary first. `/api/v1/apps` deletes it and promotes another app automatically.</Note>

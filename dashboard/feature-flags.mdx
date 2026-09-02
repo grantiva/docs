@@ -1,0 +1,66 @@
+---
+title: "Feature flags in the dashboard"
+description: "Create flags, set per-environment values, target devices, and inspect evaluations"
+---
+
+**Feature Flags** and **Environments** in the Configure section are where you manage remote config. For the SDK side see [Feature flags](/sdk/feature-flags) and the [flags quick start](/quickstart-flags).
+
+## Limits
+
+| Plan | Flags per app | Environments | Targeting rules per flag |
+|------|--------------:|-------------:|-------------------------:|
+| Free | 10 | 1 | None |
+| Pro | 50 | 3 | 5 |
+| Business | 200 | 10 | 20 |
+| Enterprise | Unlimited | Unlimited | Unlimited |
+
+On Free, flags are on/off only — there is no targeting.
+
+## Environments
+
+**Environments** lets you name the deployment environments your flags are evaluated against — Preview, QA, Canary, and so on — each with a colour from a fixed palette. You can reorder them, and deleting one asks for confirmation.
+
+Every flag carries a value per environment, so the same key can be on in QA and off in production.
+
+## Flags list
+
+Search by flag key or name. Each row shows whether the flag is being evaluated live, and an active flag with no targeting rules is flagged with a warning, since it applies to everyone.
+
+Creating a flag asks for a key, name, description, value type, and the per-environment on/off values.
+
+## Flag detail
+
+The flag detail page has a tab per environment and offers:
+
+- **Flag details** — key, name, description, and value type. Changing the value type asks for confirmation, since it can invalidate existing rules
+- **Test this flag** — evaluate against a simulated device and see the result and which rule matched
+- **Evaluation log** — recent real evaluations
+- **Device overrides** — force a specific value for one device by App Attest key id, optionally with an expiry. Removing an override asks for confirmation
+- **Delete** — removes the flag and everything attached to it
+
+Every change is audited: `flag.created`, `flag.updated`, `flag.toggled`, `flag.deleted`, `flag.rule_*`, `flag.override_*`, and `flag.environment_*`.
+
+## API
+
+Flags are manageable with an [organization API key](/api-reference/org/api-keys) over `/api/v1/org/flags`. Wire keys are `snake_case`, and `:ref` accepts either the flag's UUID or its key.
+
+| Endpoint | Purpose |
+|----------|---------|
+| `GET /api/v1/org/flags` | List, filterable by `app_id` and `environment` |
+| `POST /api/v1/org/flags` | Create a flag |
+| `GET /api/v1/org/flags/:ref` | Detail, including rule and override summaries |
+| `PUT /api/v1/org/flags/:ref` | Partial update |
+| `POST /api/v1/org/flags/:ref/toggle` | Toggle, optionally scoped to one `environment` |
+| `DELETE /api/v1/org/flags/:ref` | Delete |
+| `GET /api/v1/org/flags/:ref/history` | Change history, with `limit` and `offset` |
+| `GET /api/v1/org/flags/:ref/evaluations` | Recent evaluations, with `limit` |
+| `GET`/`POST`/`DELETE /api/v1/org/flags/:ref/overrides` | Device overrides — `device_key_id`, `forced_value`, optional `expires_at` |
+| `GET`/`POST`/`PUT`/`DELETE /api/v1/org/flag-environments` | Manage environments; `PUT` also takes `{"reorder": "up"} or {"reorder": "down"}` |
+
+Reads need `flags:read`; writes need `flags:write`.
+
+See [Flag management API](/api-reference/flags/manage), [Targeting rules](/api-reference/flags/rules) and [Overrides](/api-reference/flags/overrides) for rule shapes, and [Get flags](/api-reference/flags/get-flags) for the SDK-facing evaluation endpoint.
+
+## Webhooks
+
+`flag.created`, `flag.updated`, and `flag.deleted` fire on flag changes. `flag.updated` carries `flag_key`, `is_active`, `tenant_id`, and `environment` on a per-environment change. See [Webhooks](/concepts/webhooks).

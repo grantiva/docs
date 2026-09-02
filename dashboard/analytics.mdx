@@ -1,40 +1,40 @@
 ---
-title: "Analytics"
-description: "View device intelligence, attestation trends, and risk distribution"
+title: "Attestation analytics"
+description: "Attestation volume, success rate, risk distribution, and the event log"
 ---
 
-The analytics dashboard provides real-time insights into your app's device landscape.
+The **Attestation** page in the dashboard is where attestation analytics live. It covers volume, outcome, risk mix, and a searchable event log for your whole organization.
 
-## Summary cards
+<Note>
+There is no separate "Analytics" screen. Per-device detail lives on [Devices](/dashboard/devices); plan usage lives on **Plan & Usage** and [Billing](/dashboard/billing).
+</Note>
 
-At the top of the analytics page:
+## What the page shows
 
-- **Total attestations** — All attestation attempts in the selected period
-- **Unique devices** — Distinct devices that attested
-- **Average risk score** — Mean risk score across all devices
-- **Monthly active devices (MAD)** — Unique devices in the current billing period
+- **Success and failure counters** — attestation outcomes over the selected window
+- **Attestations over time** — a 30-day volume series, with an accessible data table behind the chart
+- **Risk distribution** — devices split across the four risk bands, each with the action Grantiva recommends
+- **Summary tiles** — totals and rates for the period
+- **Recent events** — a paginated event log. Open an event for its detail, including whether the request came through the simulator API-key fallback rather than real App Attest
 
-## Charts
+When your attestation failure rate reaches 10% or more, the sidebar shows an amber warning dot on **Attestation**. You can configure a failure-rate alert threshold under **Settings**.
 
-### Attestation trends
+## Risk bands
 
-A line chart showing daily attestation volume over the selected time range. Helps identify usage spikes and growth patterns.
+| Range | Band | Category |
+|-------|------|----------|
+| 0–20 | Low | Trusted |
+| 21–50 | Medium | Suspicious |
+| 51–75 | High | Suspicious |
+| 76–100 | Critical | Blocked |
 
-### Risk distribution
-
-A breakdown of devices by risk level: Low (0–20), Medium (21–50), High (51–75), Critical (76–100).
-
-### Device models
-
-Top device models by attestation count. Useful for understanding your user base and prioritizing device-specific testing.
-
-### OS versions
-
-Distribution of iOS/macOS versions across your attesting devices.
+See [Risk Scoring](/concepts/risk-scoring) for what moves a score.
 
 ## Data retention
 
-| Tier | Retention |
+Attestation history is retained for the length of your plan's window:
+
+| Plan | Retention |
 |------|-----------|
 | Free | 14 days |
 | Pro | 30 days |
@@ -43,21 +43,42 @@ Distribution of iOS/macOS versions across your attesting devices.
 
 ## API access
 
-Access analytics programmatically:
+Analytics endpoints authenticate with a server-to-server API key, sent as `X-API-Key` or `Authorization: Bearer`. Reads require the `analytics:read` scope; the export requires `analytics:export`.
 
 ```bash
-curl https://api.grantiva.io/api/v1/analytics/dashboard?timeRange=30d \
+# The full report — the same data the dashboard renders
+curl https://api.grantiva.io/api/v1/analytics/report \
+  -H "X-API-Key: YOUR_API_KEY"
+
+# Attestation summary for the tenant
+curl https://api.grantiva.io/api/v1/analytics/overview \
+  -H "X-API-Key: YOUR_API_KEY"
+
+# Raw attestation events
+curl https://api.grantiva.io/api/v1/analytics/events \
   -H "X-API-Key: YOUR_API_KEY"
 ```
 
-See the [Analytics API reference](/api-reference/analytics/dashboard) for details.
+<Warning>
+`GET /api/v1/analytics/dashboard` is the SPA's own session-authenticated endpoint and does **not** accept API keys. Use `/api/v1/analytics/report` from a backend.
+</Warning>
+
+See the [Analytics API reference](/api-reference/analytics/dashboard) for response shapes, and [Device details](/api-reference/analytics/devices) for a single device.
 
 ## Export
 
-Export device data as CSV from the analytics page or via the API:
+Export devices or events as CSV or JSON, from the dashboard or the API. Exports are capped at 10,000 rows per request.
 
 ```bash
 curl "https://api.grantiva.io/api/v1/analytics/export?type=csv&data=devices&period=30d" \
   -H "X-API-Key: YOUR_API_KEY" \
   -o devices.csv
 ```
+
+| Parameter | Values | Default |
+|-----------|--------|---------|
+| `type` | `csv`, `json` | `csv` |
+| `data` | `devices`, `events` | `devices` |
+| `period` | a lookback window, e.g. `30d` | `30d` |
+
+`period` filters events only; a device export returns your current device profiles.

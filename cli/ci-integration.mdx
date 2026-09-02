@@ -1,6 +1,6 @@
 ---
-title: "CI Integration"
-description: "Run visual regression tests in GitHub Actions and other CI systems"
+title: "CI integration"
+description: "Run Grantiva in GitHub Actions and other CI systems"
 ---
 
 ## GitHub Actions
@@ -18,24 +18,61 @@ jobs:
       - name: Install Grantiva CLI
         run: brew install grantiva/tap/grantiva
 
+      - name: Preflight
+        run: grantiva doctor
+
       - name: Run visual regression tests
         env:
           GRANTIVA_API_KEY: ${{ secrets.GRANTIVA_API_KEY }}
         run: grantiva ci run
 ```
 
-The CLI automatically posts results as a GitHub Check Run on the pull request.
+`actions/checkout` matters here: `grantiva ci run` derives the project slug from the `origin` git remote (`owner/repo`) and the branch from `GITHUB_HEAD_REF` or `GITHUB_REF_NAME`, falling back to `git rev-parse`. Without the checkout there is no remote to read.
+
+`grantiva doctor` exits non-zero when a required check fails — Xcode missing, an unreadable toolchain — and stays quiet about the optional ones, so it is safe as a preflight step. Results are posted as a GitHub Check Run when the GitHub App is configured for your organization.
 
 ## Environment variables
 
-| Variable | Description |
-|----------|-------------|
-| `GRANTIVA_API_KEY` | API key for authentication (required in CI) |
-| `GRANTIVA_API_URL` | Base URL override (default: `https://api.grantiva.io`) |
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `GRANTIVA_API_KEY` | — | API key. Takes precedence over `~/.grantiva/auth.json`, so nothing has to be written to disk on a runner. |
+| `GRANTIVA_API_URL` | `https://api.grantiva.io` | API base URL override. |
+| `GRANTIVA_SESSION_ID` | — | Ticket identifier that owns the simulators booted under it, so several commands share one durable owner. |
+| `GRANTIVA_MAX_SIMULATORS` | `4` | Maximum Grantiva-booted simulators on this host. |
+| `GRANTIVA_SIMULATOR_WAIT_TIMEOUT_SECONDS` | `600` | How long a boot waits for a free simulator slot. |
+| `NO_COLOR` | — | Suppress colour. Colour is already suppressed when stdout is not a terminal. |
+
+## Output and exit codes
+
+`0` if every screen passes, `1` if any fails. The results are uploaded either way — a visual regression is a verdict, not a crash.
+
+Progress narration goes to stderr and results go to stdout, so a pipeline can parse the result without filtering:
+
+```bash
+grantiva ci run --json | jq '.failed_count'
+```
+
+```json
+{
+  "run_id": "0d0a0c9e-2f1b-4c0c-9a8b-7d5e3f1a2b4c",
+  "status": "completed",
+  "url": "https://grantiva.io/dashboard/vrt/runs/0d0a0c9e",
+  "branch": "feature/dark-mode",
+  "commit_sha": "9f2b1c4",
+  "trigger": "ci",
+  "screen_count": 12,
+  "passed_count": 10,
+  "failed_count": 1,
+  "new_count": 1,
+  "duration": 84.2
+}
+```
+
+Add `--verbose` when a job fails for a reason the summary does not explain: it logs every subprocess Grantiva runs — the exact `xcodebuild` and `simctl` invocations — and their exit status.
 
 ## Pre-built binaries
 
-Grantiva can consume pre-built `.app` bundles or `.ipa` archives instead of building from source. This decouples the build from the test, enabling faster and more flexible CI pipelines.
+Grantiva can consume pre-built `.app` bundles or `.ipa` archives instead of building from source. This decouples the build from the test.
 
 ```bash
 # Use a pre-built .app bundle (skips xcodebuild, still installs)
@@ -49,15 +86,16 @@ grantiva ci run --no-build
 ```
 
 When `--app-file` is provided:
+
 - The `xcodebuild` step is skipped entirely
-- The binary is validated to be a simulator build (not a device build)
+- The binary is validated to be a simulator build, not a device build
 - The bundle ID is derived from the binary's `Info.plist` if not specified
-- `.ipa` files are automatically extracted (`.app` from `Payload/`)
+- `.ipa` files are extracted automatically (the `.app` from `Payload/`)
 - `scheme` is not required in `grantiva.yml`
 
 ### Split build and test
 
-Separate the build and test into different CI jobs. This lets you cache build artifacts, reuse them across multiple test runs, and run visual regression on different device configurations in parallel.
+Separate the build and the test into different jobs. That lets you cache build artifacts, reuse them across test runs, and run visual regression on several device configurations in parallel.
 
 ```yaml
 jobs:
@@ -92,42 +130,88 @@ jobs:
         run: grantiva ci run --app-file ./app/MyApp.app
 ```
 
-Benefits:
-- Build and test can be separate jobs (even separate machines)
-- Build artifacts can be cached and reused across multiple test runs
-- Visual regression doesn't re-build when only baselines changed
-- Multiple Grantiva configs (different screen sizes, locales) can run in parallel against the same binary
+Use `--derived-data-path` to isolate Xcode products per job when you do build inside the test job — it overrides any `-derivedDataPath` in `build_settings`.
 
-## JSON output for scripting
+## Functional flows in CI
+
+`grantiva run` needs no authentication, so it works in pipelines that do not use visual regression at all.
 
 ```bash
-grantiva ci run --json | jq '.failed_count'
+grantiva run --app-file ./app/MyApp.app \
+  --report-dir "$RUNNER_TEMP/grantiva-report" \
+  --timeout 1200 \
+  --env API_BASE_URL=https://staging.example.com
 ```
 
-Exit code is `0` if all screens pass, `1` if any fail — works with CI `if` conditions.
+| Flag | Why it matters in CI |
+|------|---------------------|
+| `--report-dir` | Writes `report.json`, assets, and failure screenshots somewhere your job can upload them. Without it they go to an ephemeral temp directory. |
+| `--timeout` | Kills the runner subprocess after N seconds. Default 600; raise it for long multi-flow suites. |
+| `--env KEY=VALUE` | Passes an ephemeral port or test fixture into the app under test. Repeatable. |
+| `--snapshot trailing` | Captures the last-good step alongside the failing one, which is usually what you need to diagnose from a log. |
+| `--continue-on-failure` | Runs the whole suite instead of stopping at the first broken flow. The default is fail-fast. |
+
+Upload the report directory as an artifact on failure:
+
+```yaml
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: grantiva-report
+          path: ${{ runner.temp }}/grantiva-report
+```
+
+### Backgrounded runs
+
+With `--keep-alive` the session outlives the flows, so process exit is not a completion signal. Wait on `--ready-file` instead:
+
+```bash
+grantiva run --flow flows/onboarding.yaml --keep-alive \
+  --ready-file "$RUNNER_TEMP/onboarding.ready" &
+
+while [ ! -f "$RUNNER_TEMP/onboarding.ready" ]; do sleep 0.2; done
+status=$(jq -r .status "$RUNNER_TEMP/onboarding.ready")   # passed | failed | interrupted
+
+grantiva hierarchy > "$RUNNER_TEMP/final-state.xml"
+[ "$status" = passed ]
+```
+
+The file is deleted at startup and always written, including on a setup failure that never reaches the runner — so that loop, which has no timeout of its own, cannot wedge the job.
+
+## Parallel runs on one machine
+
+Runs on different simulator UDIDs execute in parallel. At most four Grantiva-booted simulators are admitted at once; a fifth boot waits up to ten minutes and then fails, naming the sessions holding capacity.
+
+```bash
+export GRANTIVA_SESSION_ID="$GITHUB_RUN_ID"
+
+udid=$(grantiva simulator ensure --name "CI $GITHUB_RUN_ID iPhone 17")
+grantiva ci run --simulator "$udid"
+
+grantiva simulator teardown --session-id "$GITHUB_RUN_ID"
+```
+
+On a self-hosted runner, end the job with `grantiva simulator cleanup` to delete Grantiva-created simulators that are shut down and no longer in an active session. See [Simulator management](/cli/simulators) for capacity limits, leases, and reclaiming a device a killed job left behind.
 
 ## Approving new baselines
 
-When UI changes are intentional, approve the new screenshots:
+When UI changes are intentional, approve the new screenshots locally:
 
 ```bash
-grantiva diff approve
+grantiva diff approve             # all screens
+grantiva diff approve Home Settings
 ```
 
-Or approve specific screens:
+From a pipeline, review the uploaded run instead:
 
 ```bash
-grantiva diff approve "Home" "Settings"
+run_id=$(grantiva ci run --json | jq -r .run_id)
+grantiva console vrt screen accept acme/my-app "$run_id" Home Settings
+grantiva console vrt approve acme/my-app "$run_id"
 ```
 
-Approved captures become the new baselines for future comparisons.
+See [VRT review](/cli/console-vrt) for the full review loop.
 
 ## Results
 
-After each run, the CLI outputs:
-- Run ID and dashboard URL
-- Screen-by-screen pass/fail status
-- Pixel diff percentage and perceptual distance per screen
-- Total duration
-
-Results are also visible in the Grantiva dashboard under your project.
+`grantiva ci run` prints a run summary: the run ID and status, the branch and commit, the trigger, the screen counts (total, passed, failed, new), the duration, and the dashboard URL. Per-screen detail — status, pixel diff percentage, perceptual distance, and the diff image path — lives in the dashboard, and locally in `grantiva diff compare`.

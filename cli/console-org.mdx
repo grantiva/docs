@@ -1,0 +1,253 @@
+---
+title: "Console: organization"
+description: "Webhooks, alerts, API keys, team, audit log, and org settings from the terminal"
+---
+
+Six areas covering everything under the organization: `webhooks`, `alerts`, `keys`, `team`, `audit`, and `org`.
+
+## Webhooks
+
+Reads need `webhooks:read`, writes `webhooks:write`, deletes `webhooks:delete`, and the test send `webhooks:test`.
+
+### `grantiva console webhooks list`
+
+```bash
+grantiva console webhooks list [--json]
+```
+
+### `grantiva console webhooks events`
+
+List the event types a webhook can subscribe to.
+
+```bash
+grantiva console webhooks events [--json]
+```
+
+Run this before `create` — event names are validated against this list before the request is sent.
+
+### `grantiva console webhooks create`
+
+Create a webhook endpoint.
+
+```bash
+grantiva console webhooks create <url> --event EVENT [--event EVENT]...
+                                [--description TEXT] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--event` | Event type to subscribe to. Repeatable. |
+| `--description` | Description. |
+
+The URL must be `https`. **The signing secret is printed once** — capture it now.
+
+```bash
+grantiva console webhooks create https://ops.example.com/grantiva \
+  --event device.high_risk --event flag.updated
+```
+
+### `grantiva console webhooks update`
+
+Change a webhook's events or description.
+
+```bash
+grantiva console webhooks update <webhook-id> [--event EVENT]... [--description TEXT] [--json]
+```
+
+`--event` **replaces** the subscribed events rather than adding to them.
+
+### `grantiva console webhooks enable` / `disable`
+
+Resume or pause deliveries without deleting the endpoint.
+
+```bash
+grantiva console webhooks enable  <webhook-id> [--json]
+grantiva console webhooks disable <webhook-id> [--json]
+```
+
+### `grantiva console webhooks test`
+
+Send a test event and report the endpoint's response.
+
+```bash
+grantiva console webhooks test <webhook-id> [--json]
+```
+
+Prints the outcome and latency, and **exits `1` when the endpoint fails** — so it works as a deploy gate.
+
+Needs `webhooks:test`.
+
+### `grantiva console webhooks deliveries`
+
+List recent deliveries for a webhook.
+
+```bash
+grantiva console webhooks deliveries <webhook-id> [--json]
+```
+
+### `grantiva console webhooks retry`
+
+Retry a failed delivery.
+
+```bash
+grantiva console webhooks retry <webhook-id> <delivery-id> [--json]
+```
+
+### `grantiva console webhooks delete`
+
+Delete a webhook endpoint and its delivery history.
+
+```bash
+grantiva console webhooks delete <webhook-id> [--yes] [--json]
+```
+
+## Alerts
+
+Three groups: risk alert rules, the attestation failure-rate alert, and notification preferences.
+
+### Risk alert rules
+
+Rules fire a webhook when a device's risk score crosses a threshold. Available on the Business plan and up. Reads need `alerts:read`, writes `alerts:write`.
+
+```bash
+grantiva console alerts rules list [--json]
+grantiva console alerts rules create <name> --threshold N --url URL [--comparison gt|gte] [--json]
+grantiva console alerts rules update <rule-id> [--name NAME] [--threshold N]
+                                     [--comparison gt|gte] [--url URL]
+                                     [--active | --no-active] [--json]
+grantiva console alerts rules delete <rule-id> [--yes] [--json]
+grantiva console alerts rules deliveries [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--threshold` | Risk score threshold, 0–100. Required on `create`. |
+| `--comparison` | `gt` (above) or `gte` (at or above). Default `gte`. |
+| `--url` | Webhook URL to call. Required on `create`. |
+
+`deliveries` lists recent deliveries across all rules.
+
+```bash
+grantiva console alerts rules create "Critical devices" \
+  --threshold 76 --url https://ops.example.com/risk
+```
+
+### Failure-rate alert
+
+Fires when the attestation failure rate crosses a threshold.
+
+```bash
+grantiva console alerts failure-rate get [--json]
+grantiva console alerts failure-rate set [--enabled | --no-enabled] [--threshold N]
+                                         [--min-attestations N] [--json]
+grantiva console alerts failure-rate history [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--enabled` / `--no-enabled` | Turn the alert on or off. |
+| `--threshold` | Failure-rate percentage that triggers the alert, 5–50. |
+| `--min-attestations` | Minimum attestations in the window before the rate counts. |
+
+`get` and `history` need `alerts:read`; `set` needs `org:write`.
+
+```bash
+grantiva console alerts failure-rate set --enabled --threshold 10 --min-attestations 200
+```
+
+### Notification preferences
+
+Which events email the org admin.
+
+```bash
+grantiva console alerts notifications get [--json]
+grantiva console alerts notifications set <name=on|off> [<name=on|off>...] [--json]
+```
+
+Toggles: `newFeatureRequest`, `featureVoteThreshold`, `featureStatusChange`, `newSupportTicket`, `ticketAdminReply`, `ticketResolved`, `ticketUserReply`, `flagToggle`, `teamInvite`, `usageAlert`.
+
+`featureVoteThresholdCount=<n>` takes a number rather than `on`/`off`.
+
+`get` needs `org:read`; `set` needs `org:write`.
+
+```bash
+grantiva console alerts notifications set flagToggle=off usageAlert=on featureVoteThresholdCount=25
+```
+
+## API keys
+
+```bash
+grantiva console keys list [--json]
+grantiva console keys create <name> --scope SCOPE [--scope SCOPE]... [--expires ISO8601] [--json]
+grantiva console keys rotate <key-id> [--grace-days N] [--json]
+grantiva console keys revoke <key-id> [--yes] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--scope` | Scope to grant. Repeatable. Required on `create`. |
+| `--expires` | Expiry as an ISO 8601 timestamp. |
+| `--grace-days` | On `rotate`, keep the old key working for this many days. Without it the old key is revoked immediately. |
+
+`list` shows key prefixes only. `create` prints the raw key **once**. `rotate` issues a replacement holding the same scopes.
+
+A key can only create keys with scopes it holds itself; the server's refusal is shown verbatim.
+
+`list` needs `keys:read`; `create`, `rotate`, and `revoke` need `keys:write`.
+
+```bash
+grantiva console keys create ci-flags \
+  --scope flags:read --scope flags:write --expires 2027-01-01T00:00:00Z
+```
+
+The scope names are listed in the [console overview](/cli/console#scopes).
+
+## Team
+
+```bash
+grantiva console team members [--json]
+grantiva console team invites [--json]
+grantiva console team invite <email> [--role viewer|member|admin] [--json]
+grantiva console team revoke-invite <invite-id> [--json]
+grantiva console team remove <membership-id> [--yes] [--json]
+```
+
+`--role` defaults to `member`. `remove` takes the membership ID from `team members`; admins and the owner cannot be removed with an API key.
+
+`members` and `invites` need `org:read`. The mutations need `admin:team`.
+
+## Audit log
+
+```bash
+grantiva console audit list [--page N] [--per N] [--json]
+```
+
+| Flag | Description |
+|------|-------------|
+| `--page` | Page number, starting at 1. |
+| `--per` | Entries per page, 1–100. Default 50. |
+
+Newest first. Needs `admin:audit`.
+
+## Organization
+
+```bash
+grantiva console org settings get [--json]
+grantiva console org settings set-name <name> [--json]
+grantiva console org usage [--json]
+grantiva console org billing show [--json]
+```
+
+`usage` reports Monthly Active Devices against the plan limit. `billing show` reports the plan, usage, and current period — it is read-only; manage billing in the dashboard. Renaming the org also updates its slug.
+
+`settings get` and `usage` need `org:read`; `set-name` needs `org:write`; `billing show` needs `admin:billing`.
+
+<Note>
+The `admin:team`, `admin:audit`, and `admin:billing` scopes are Enterprise-only on an API key.
+</Note>
+
+## Next steps
+
+- [Console overview](/cli/console) — auth, scopes, and shared conventions
+- [Webhooks](/concepts/webhooks) — payload shapes and signature verification
+- [Billing](/dashboard/billing) — plans and what counts as a Monthly Active Device

@@ -5,7 +5,11 @@ description: "Add feature requests, voting, and support tickets to your app"
 
 The feedback service lets your users submit feature requests, vote on ideas, and open support tickets — all from within your app.
 
-Access it via `grantiva.feedback`.
+Access it via `grantiva.feedback`. `FeedbackService` is an `actor`, so every call needs `await` — including the non-throwing cache helpers.
+
+<Note>
+Feedback endpoints authenticate with the attestation JWT. Call `validateAttestation()` once before using them (in the Simulator, initialize the SDK with an API key — see [Simulator Setup](/simulator-setup)).
+</Note>
 
 ## Feature requests
 
@@ -20,10 +24,10 @@ let requests = try await grantiva.feedback.getFeatureRequests(
 )
 ```
 
-Results are cached for 2 minutes. Force a refresh:
+Only the default query — no status filter, `sort: "votes"`, `page: 1`, `perPage: 20` — is cached, for 2 minutes. Any other combination always hits the network. Force a refresh of the cached query:
 
 ```swift
-grantiva.feedback.refreshFeatureRequests()
+await grantiva.feedback.refreshFeatureRequests()
 let fresh = try await grantiva.feedback.getFeatureRequests()
 ```
 
@@ -77,14 +81,31 @@ feature.title        // String
 feature.description  // String
 feature.status       // FeatureRequestStatus
 feature.voteCount    // Int
-feature.hasVoted     // Bool — whether current user voted
+feature.hasVoted     // Bool — whether the current user or device voted
 feature.commentCount // Int
 feature.createdAt    // Date
+feature.updatedAt    // Date
 ```
+
+`FeatureRequest` is `Identifiable`, so it drops straight into a SwiftUI `List` or `ForEach`.
 
 ### FeatureRequestStatus
 
-`pending` | `open` | `planned` | `in_progress` | `shipped` | `declined` | `duplicate`
+A `String`-backed enum: `.pending`, `.open`, `.planned`, `.inProgress` (raw value `in_progress`), `.shipped`, `.declined`, `.duplicate`.
+
+### Vote and FeatureComment
+
+```swift
+vote.id               // UUID
+vote.featureRequestId // UUID
+vote.createdAt        // Date
+
+comment.id               // UUID
+comment.featureRequestId // UUID
+comment.authorType       // CommentAuthorType — .user or .admin
+comment.body             // String
+comment.createdAt        // Date
+```
 
 ## Support tickets
 
@@ -133,8 +154,68 @@ try await grantiva.feedback.reply(to: ticketId, body: "Thanks for looking into t
 ```swift
 ticket.id           // UUID
 ticket.subject      // String
-ticket.status       // TicketStatus: open, awaitingReply, resolved, closed
-ticket.priority     // TicketPriority: low, normal, high, urgent
+ticket.status       // TicketStatus — .open, .awaitingReply, .resolved, .closed
+ticket.priority     // TicketPriority — .low, .normal, .high, .urgent
 ticket.messageCount // Int
 ticket.createdAt    // Date
+ticket.updatedAt    // Date
 ```
+
+### TicketMessage model
+
+```swift
+message.id         // UUID
+message.ticketId   // UUID
+message.authorType // CommentAuthorType — .user or .admin
+message.body       // String
+message.createdAt  // Date
+```
+
+Both `SupportTicket` and `TicketMessage` are `Identifiable`.
+
+## Cache control
+
+Feature requests and tickets are cached separately.
+
+```swift
+// Invalidate the cached default feature-request query
+await grantiva.feedback.refreshFeatureRequests()
+
+// Invalidate the cached ticket list
+await grantiva.feedback.refreshTickets()
+
+// Drop everything
+await grantiva.feedback.clearCache()
+```
+
+Submitting, voting, commenting, and replying invalidate the relevant cache for you. `grantiva.identify(_:)` and `grantiva.clearIdentity()` clear the whole cache.
+
+## Push notifications for replies
+
+If you register the device's APNs token with the SDK, it is attached to feature request submissions and comments. The backend then subscribes the device to that thread and pushes it when an admin replies.
+
+```swift
+func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+) {
+    grantiva.setPushToken(deviceToken)
+}
+```
+
+There is also a string overload if you have already hex-encoded the token, plus accessors for reading and clearing it:
+
+```swift
+grantiva.setPushToken("a1b2c3…", environment: .sandbox)
+grantiva.pushToken          // String? — the registered hex token
+grantiva.clearPushToken()   // stop subscribing new threads
+```
+
+| Parameter | Type | Default | Description |
+|---|---|---|---|
+| `deviceToken` / `hexToken` | `Data` / `String` | — | The token Apple handed your app delegate |
+| `environment` | `PushEnvironment` | `.detected` | `.sandbox` or `.production` |
+
+`PushEnvironment.detected` reads `aps-environment` out of the bundled provisioning profile, and falls back to the build configuration (`DEBUG` → `.sandbox`, release → `.production`) when no profile is present. Pass an explicit value if your build pipeline doesn't fit those heuristics.
+
+Registering a token is a no-op unless your organization has a linked push app. See [Push notifications](/push/overview).

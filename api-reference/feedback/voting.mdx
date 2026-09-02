@@ -3,18 +3,23 @@ title: "Voting"
 description: "Vote and unvote on feature requests"
 ---
 
-## Vote for a feature
-
-```
-POST /api/v1/feedback/features/:featureId/vote
-```
-
-### Headers
+## Authentication
 
 | Header | Required | Description |
 |--------|----------|-------------|
 | `X-Bundle-ID` | Yes | App bundle identifier |
 | `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side/simulator callers. Identity headers alone return 401. See [Authentication](/api-reference/authentication) |
+
+API-key callers need the `feedback:write` scope for both endpoints.
+
+---
+
+## Vote for a feature
+
+```
+POST /api/v1/feedback/features/:featureId/vote
+```
 
 ### Body
 
@@ -34,13 +39,22 @@ POST /api/v1/feedback/features/:featureId/vote
 
 ```json
 {
-  "id": "uuid",
-  "featureRequestId": "uuid",
-  "createdAt": "2025-03-10T12:00:00Z"
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "featureRequestId": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "createdAt": "2026-03-10T12:00:00Z"
 }
 ```
 
-Each user/device can vote once per feature request. Duplicate votes return `409 Conflict`.
+The vote and the feature's `voteCount` update in one transaction.
+
+### Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | `:featureId` is not a UUID |
+| 403 | The feature request belongs to another organization |
+| 404 | No such feature request |
+| 409 | This `voterId` has already voted on this feature request |
 
 ---
 
@@ -58,4 +72,4 @@ DELETE /api/v1/feedback/features/:featureId/vote
 
 ### Response
 
-`204 No Content`
+`204 No Content`. `400` if `voter_id` is missing, `404` if that voter has no vote on the feature.

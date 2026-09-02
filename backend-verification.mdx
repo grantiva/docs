@@ -12,6 +12,19 @@ After your iOS app calls `grantiva.validateAttestation()`, it receives a signed 
 3. You verify the JWT signature and expiry locally (no network call per request)
 4. You extract device claims: `risk_score`, jailbreak status, and any custom claims
 
+## The public key endpoint
+
+```
+GET https://api.grantiva.io/.well-known/jwks.json
+```
+
+No authentication. Returns a standard JWKS document describing the RSA public key Grantiva signs attestation JWTs with.
+
+- Tokens are signed **RS256**, and the token header carries a `kid` matching the key in the set — match on `kid` rather than assuming a single key, so a rotation does not break verification.
+- The response is served with `Cache-Control: public, max-age=3600`. Every library below caches on that and refreshes on rotation.
+- `GET /api/v1/attestation/public-key` is an alias that returns the same document, kept for older integrations. Prefer the `.well-known` path.
+- A `503` means signing keys are not configured for the environment you are calling — retry rather than treating the token as invalid.
+
 ## JWT Claims Reference
 
 The claims below are the ones most integrations use. [JWT Claims](/concepts/jwt-claims) is the complete reference, including which claims each plan includes and a decoded example token.
@@ -360,7 +373,7 @@ userTier, _ := claims.CustomClaims["user_tier"].(string)
 
 ## Reading the subscription claim
 
-If your organization uses [subscription entitlement ingestion](/concepts/subscription-claims) (Enterprise), the managed `subscription` object appears under `custom_claims`:
+If your organization uses [subscription entitlement ingestion](/concepts/subscription-claims), the managed `subscription` object appears under `custom_claims`:
 
 ```javascript
 // Node.js

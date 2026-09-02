@@ -1,6 +1,6 @@
 ---
 title: "Configuration"
-description: "Configure visual regression testing with grantiva.yml"
+description: "Configure the Grantiva CLI with grantiva.yml"
 ---
 
 ## Generate a config file
@@ -9,11 +9,13 @@ description: "Configure visual regression testing with grantiva.yml"
 grantiva init
 ```
 
-This creates `grantiva.yml` in your project root. The CLI auto-detects your Xcode scheme and workspace.
+This writes `grantiva.yml` in the current directory. The scheme is taken from the name of the `.xcworkspace` or `.xcodeproj` it finds there; the simulator defaults to `iPhone 16`. If `grantiva.yml` already exists, the command leaves it alone.
 
 ```bash
 grantiva init --scheme MyApp --bundle-id com.example.myapp
 ```
+
+`grantiva init` is the one command with no `--json`. It still takes `--verbose` and `--quiet`.
 
 ## Configuration reference
 
@@ -25,7 +27,7 @@ simulator: iPhone 16
 # Optional
 workspace: MyApp.xcworkspace    # If using a workspace
 project: MyApp.xcodeproj        # If not using a workspace
-bundle_id: com.example.myapp    # Derived from binary if --app-file is used
+bundle_id: com.example.myapp    # Derived from the binary if --app-file is used
 
 # Screens to capture (VRT)
 screens:
@@ -55,8 +57,10 @@ diff:
   perceptual_threshold: 5.0    # Max CIE76 color distance
 ```
 
+Every top-level key can be overridden on the command line: `--scheme`, `--simulator`, `--bundle-id`.
+
 <Note>
-When using `--app-file` to provide a pre-built binary, `scheme` is not required. The bundle ID is derived from the binary's `Info.plist` if not specified.
+When you use `--app-file` to provide a pre-built binary, `scheme` is not required. The bundle ID is derived from the binary's `Info.plist` if not specified.
 </Note>
 
 ## Screens
@@ -90,11 +94,11 @@ Each screen has a `name` and a `path` that describes how to navigate to it.
 | `type: "text"` | Type text into the focused field |
 | `swipe: direction` | Swipe up, down, left, or right |
 | `wait: N` | Wait N seconds |
-| `assert_visible: "Label"` | Verify element is visible (fails the screen if not) |
-| `assert_not_visible: "Label"` | Verify element is not visible |
+| `assert_visible: "Label"` | Verify an element is visible (fails the screen if not) |
+| `assert_not_visible: "Label"` | Verify an element is not visible |
 | `run_flow: "path.yaml"` | Include steps from another YAML file |
 
-A screenshot is automatically taken at the end of each screen's path.
+A screenshot is taken automatically at the end of each screen's path.
 
 ## Flows
 
@@ -116,12 +120,14 @@ flows:
 | Screenshot | Taken automatically at the end | Wherever `takeScreenshot` appears in the file |
 | Baselines | Compared against stored baselines by `grantiva ci run` | Not compared — pass/fail only |
 
-Paths are resolved relative to the directory containing `grantiva.yml`. Any screenshots taken inside a flow file are saved to `.grantiva/captures/` named `<flowname>-<screenshot>.png`.
+Paths are resolved relative to the directory containing `grantiva.yml`. Flows with the same basename in different directories (`smoke/login.yaml`, `regression/login.yaml`) are staged separately, so one cannot shadow the other.
 
-`grantiva run` runs all `screens:` first, then each flow in `flows:` order. A runner failure in any flow captures a `simctl` screenshot of the current simulator state for debugging.
+`grantiva run` runs all `screens:` first, then each flow in `flows:` order, in a single GrantivaAgent session. By default the suite stops at the first broken flow; `--continue-on-failure` runs the rest. A runner failure captures a `simctl` screenshot of the current simulator state for debugging.
+
+Screenshots go to `.grantiva/captures/`, or to `<report-dir>/captures` when `--report-dir` is given. `grantiva run --flow <path>` runs one file and skips `screens:` entirely.
 
 <Note>
-`flows:` is only used by `grantiva run`. The `grantiva ci run` pipeline (VRT) only processes `screens:`.
+`flows:` is only used by `grantiva run`. The `grantiva ci run` and `grantiva diff` pipelines only process `screens:`.
 </Note>
 
 ## Maestro compatibility
@@ -132,8 +138,10 @@ Grantiva can read [Maestro](https://maestro.mobile.dev) flow files as a drop-in 
 
 Grantiva auto-detects the format when loading configuration:
 
-1. Looks for `grantiva.yml` — parses as Grantiva or Maestro format (auto-detected)
-2. If no `grantiva.yml`, looks for a `.maestro/` directory and loads all flow files
+1. Looks for `grantiva.yml` — parses it as Grantiva or Maestro format (auto-detected)
+2. If there is no `grantiva.yml`, looks for a `.maestro/` directory and loads all flow files
+
+A file is treated as Maestro format when it contains an `appId:` key or a line starting with `- tapOn:`, `- launchApp`, `- inputText:`, `- assertVisible:`, or `- takeScreenshot:`.
 
 ### Using Maestro flows
 
@@ -161,15 +169,15 @@ Each `takeScreenshot` becomes a named screen capture point. Commands between scr
 | `inputText` | `type` |
 | `assertVisible` | `assert_visible` |
 | `assertNotVisible` | `assert_not_visible` |
-| `scroll: {direction: down}` | `swipe: up` (direction inverted) |
+| `scroll` / `scroll: {direction: down}` | `swipe: up` (direction inverted) |
 | `swipe: {start: ..., end: ...}` | `swipe` (direction derived from coordinates) |
 | `runFlow` / `runFlow: {file: ...}` | `run_flow` |
 | `extendedWaitUntil: {text: ...}` | `assert_visible` |
 | `waitForAnimationToEnd` | `wait` (timeout converted to seconds) |
 | `takeScreenshot: "name"` | Screen capture boundary |
-| `launchApp` / `stopApp` | Skipped (Grantiva handles app lifecycle) |
+| `launchApp` / `stopApp` / `killApp` / `back` | Handled by Grantiva, or skipped |
 
-Unsupported commands (`pressKey`, `setPermissions`, `evalScript`, `repeat`, etc.) are silently skipped.
+Unsupported commands (`pressKey`, `setPermissions`, `evalScript`, `repeat`, and others) are silently skipped.
 
 ### Sub-flows
 
@@ -194,51 +202,39 @@ build_settings:
   - "SWIFT_OPTIMIZATION_LEVEL=-Onone"
 ```
 
-Each entry is appended verbatim to the xcodebuild invocation.
+Each entry is appended verbatim to the `xcodebuild` invocation.
 
-## Accessibility checks
+The `--derived-data-path` flag is available on every command that builds the app. When both are given it wins: any `-derivedDataPath` in `build_settings` is stripped and replaced. Absolute and relative paths both work, including paths containing spaces.
+
+## Accessibility rules
 
 ```yaml
 a11y:
-  fail_on_new_violations: true        # Fail the run on new violations (default: true)
   rules:
-    - missing_label                   # Elements with no accessibility label
+    - missing_label                   # Interactive elements with no accessibility label
     - small_tap_target                # Tap targets smaller than 44×44pt
 ```
 
-| Setting | Default | Description |
-|---------|---------|-------------|
-| `fail_on_new_violations` | `true` | Fail CI when new violations are detected |
-| `rules` | `[missing_label, small_tap_target]` | Which a11y rules to enforce |
-
-## Size limits
-
-Warn or fail when a screenshot exceeds a file size threshold:
-
-```yaml
-size:
-  warn_mb: 0.5    # Warn if any capture exceeds 500 KB (default: 0.5)
-  fail_mb: 2.0    # Fail if any capture exceeds 2 MB (default: 2.0)
-```
-
-## AI provider
-
-```yaml
-ai:
-  provider: none    # AI provider for smart assertions (default: none)
-```
-
-Reserved for future AI-powered visual assertion features.
+`a11y.rules` selects which rules the [`grantiva_a11y_check` MCP tool](/cli/mcp#ui-automation) enforces. Both rules run when the key is absent.
 
 ## Directory structure
 
-After running commands, Grantiva creates:
+Commands write under `.grantiva/` in your project:
 
 ```
 .grantiva/
-├── captures/          # Screenshots from capture runs
+├── captures/          # Screenshots from capture and run
 │   └── diffs/         # Diff images for failed comparisons
-└── baselines/         # Local baseline images (if not using cloud)
+├── baselines/         # Local baseline images (if not using cloud baselines)
+└── recordings/        # grantiva record output, with extracted frames alongside
 ```
 
-Credentials are stored at `~/.grantiva/auth.json`.
+`grantiva run --report-dir <dir>` moves the runner's `report.json`, assets, failure screenshots, and captures under that directory instead, so nothing is written to `./.grantiva`.
+
+Credentials live outside the project, at `~/.grantiva/auth.json`. Keep-alive session files are at `~/.grantiva/runner/sessions/`, and the simulator capacity registry at `~/.grantiva/simulator-capacity/`.
+
+## Next steps
+
+- [Commands](/cli/commands) — every flag that overrides these settings
+- [VRT quick start](/quickstart-vrt)
+- [Simulator management](/cli/simulators)

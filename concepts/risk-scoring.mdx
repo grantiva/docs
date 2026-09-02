@@ -34,11 +34,14 @@ The score considers multiple signals:
 - **Device integrity** — Does the attestation pass Apple's checks?
 - **Suspicious activity history** — Past suspicious events raise the score, with **recency decay**: each clean week forgives one past event, so a device that stays clean earns its trust back over time.
 - **Device age** — New devices (fewer than 3 attestations) carry a temporary penalty that clears as attestation history builds.
-- **Anomaly detection** — Rapid country changes, app version downgrades, VPN/proxy networks, device model inconsistencies, and unusual timing patterns.
+- **Anomaly detection** — Rapid country changes, app version downgrades, VPN/proxy networks, device model changes, and unusual timing patterns.
+- **Trust streak** — A device with 30 consecutive clean attestations gets a credit against its score, and a larger one at 90.
 
 <Info>
 Scores are dynamic in both directions: they rise on suspicious signals and fall again as a device builds a clean streak. Don't persist a device's score long-term — read it fresh from each attestation.
 </Info>
+
+The **Devices** page in the dashboard shows the reasoning behind an individual device's score. See [Devices](/dashboard/devices).
 
 ## Using risk data
 
@@ -100,13 +103,17 @@ Your backend reads the **signed JWT**, not the response body. The claims are fla
 
 On Pro, Business, and Enterprise plans, webhooks fire for risk-related events:
 
-- `device.high_risk` — A device exceeds your risk threshold
+- `device.high_risk` — A device's score exceeds your threshold
 - `device.new` — First attestation from a new device
 - `device.attestation_failed` — A device fails attestation
-- `attestation.anomaly` — Unusual attestation pattern detected
+- `attestation.anomaly` — One or more anomalies are detected on an attestation
 
-See [Webhooks](/concepts/webhooks) for setup.
+The high-risk threshold is your organization's compliance `maxRiskScore`, defaulting to **50** when unset. The payload carries both the score and the threshold that fired it. See [Webhooks](/concepts/webhooks) for setup and payload shapes.
 
-## Dashboard analytics
+## Risk alerts
 
-The analytics dashboard shows risk distribution, high-risk device trends, and jailbreak detection rates. See [Analytics](/dashboard/analytics).
+On Business and Enterprise plans you can define **risk alert rules**: a threshold, a comparison (`gte` or `gt`), and a webhook URL that Grantiva calls when a device's score matches. Rules are independent of webhook endpoints and keep their own delivery log. Manage them from the [risk alerts API](/api-reference/org/risk-alerts). Reading the rules and delivery log also requires Business or above.
+
+## Dashboard
+
+The **Attestation** page shows the risk distribution across your fleet with the recommended action per band, and **Devices** lets you filter your fleet by band. See [Attestation analytics](/dashboard/analytics) and [Devices](/dashboard/devices).

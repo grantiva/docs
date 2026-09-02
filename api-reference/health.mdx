@@ -3,7 +3,24 @@ title: "Health"
 description: "Service health and status endpoints"
 ---
 
-Grantiva exposes three health endpoints. None require authentication.
+Grantiva exposes several health endpoints. None require authentication.
+
+## API status
+
+```
+GET /api
+```
+
+A static banner confirming you reached the API.
+
+```json
+{
+  "message": "Grantiva API is running",
+  "version": "1.0.0",
+  "documentation": "https://docs.grantiva.io",
+  "status": "healthy"
+}
+```
 
 ## Basic health
 

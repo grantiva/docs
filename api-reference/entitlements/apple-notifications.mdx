@@ -25,9 +25,11 @@ On each accepted event Grantiva updates the Subject's entitlement, which changes
 
 | Status | When |
 |--------|------|
-| 200 | Event processed — **or** permanently unprocessable (unknown bundle ID, ingestion disabled, org not Enterprise, missing `appAccountToken`, unmapped product, replayed notification, bad signature) |
+| 200 | Event processed — **or** permanently unprocessable (unknown bundle ID, ingestion disabled, missing `appAccountToken`, unmapped product, replayed notification, bad signature) |
 | 5xx | Transient server error — Apple will retry |
 
-Permanent conditions intentionally return 200 so Apple stops retrying them. Replay protection is keyed on Apple's `notificationUUID`.
+Permanent conditions intentionally return 200 so Apple stops retrying them. Replay protection is keyed on Apple's `notificationUUID`. A request with no body, or a body that is not a `signedPayload` envelope, returns `400`.
+
+Every permanent drop that can be attributed to your organization is recorded — read it back from [`GET /api/v1/org/entitlement-ingest-events`](/api-reference/entitlements/config#ingest-events).
 
 <Note>Sandbox notifications are ingested too, producing claims with `"environment": "sandbox"`. Filter on `environment` in production backends.</Note>

@@ -1,9 +1,13 @@
 ---
-title: "Device Details"
-description: "Get detailed device profile and attestation history"
+title: "Devices"
+description: "Device profiles, attestation history, and the org device inventory"
 ---
 
-## Request
+Two surfaces read device data: a single-device lookup on the analytics API, and a filterable inventory on the console API.
+
+---
+
+## Device details
 
 ```
 GET /api/v1/analytics/devices/:keyId
@@ -13,7 +17,7 @@ GET /api/v1/analytics/devices/:keyId
 
 | Header | Required | Description |
 |--------|----------|-------------|
-| `X-API-Key` | Yes | Your API key |
+| `X-API-Key` | Yes | Your API key, with the `analytics:read` scope. `Authorization: Bearer <key>` works too |
 
 ### Path parameters
 
@@ -21,33 +25,178 @@ GET /api/v1/analytics/devices/:keyId
 |-----------|------|-------------|
 | `keyId` | `string` | The device's App Attest key identifier |
 
-## Response
+### Response
 
 ```json
 {
-  "keyId": "abc123",
+  "keyId": "abc123keyid",
   "deviceProfile": {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "keyId": "abc123keyid",
     "deviceModel": "iPhone15,2",
     "osVersion": "18.0",
     "appVersion": "2.1.0",
+    "firstAppVersion": "2.0.0",
     "riskScore": 12,
     "jailbreakDetected": false,
+    "isDevelopmentBuild": false,
+    "appStoreReceipt": true,
     "attestationCount": 42,
-    "firstSeenAt": "2025-01-15T10:00:00Z",
-    "lastSeenAt": "2025-03-10T12:00:00Z"
+    "suspiciousEvents": 0,
+    "consecutiveCleanAttestations": 42,
+    "permissions": [],
+    "lastCountry": "US",
+    "firstSeen": "2026-01-15T10:00:00Z",
+    "lastAttestation": "2026-03-10T12:00:00Z"
   },
   "recentEvents": [
     {
-      "type": "attestation",
-      "result": "success",
+      "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+      "eventType": "attestation_validated",
+      "keyId": "abc123keyid",
+      "deviceId": "abc123",
+      "ipAddress": "203.0.113.7",
+      "success": true,
+      "errorReason": null,
       "riskScore": 12,
-      "timestamp": "2025-03-10T12:00:00Z"
+      "createdAt": "2026-03-10T12:00:00Z"
     }
   ],
   "complianceStatus": {
     "isCompliant": true,
-    "checks": []
+    "score": 100,
+    "violations": [],
+    "lastChecked": "2026-03-10T12:00:00Z"
   },
-  "lastUpdated": "2025-03-10T12:00:00Z"
+  "lastUpdated": "2026-03-10T12:00:00Z"
 }
 ```
+
+`deviceProfile` is the stored device record — the fields above plus internal identifiers. `recentEvents` holds the 50 newest events for the device, newest first. `complianceStatus` is evaluated against your organization's compliance rules at request time; `violations` entries name the failed check (for example `jailbreakDetected` or `highRiskScore`).
+
+`404` when no device with that key ID exists in your organization.
+
+---
+
+## Device inventory
+
+```
+GET /api/v1/org/devices
+```
+
+The console listing — filterable server-side, so a script doesn't have to page through every device to find one.
+
+**Authentication** — an API key with the `devices:read` scope, or a dashboard session (viewer+). Fields are snake_case.
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | int | 1 | Page number |
+| `per` | int | 20 | Page size, 1–100 |
+| `risk_min` | int | — | Minimum risk score, 0–100 |
+| `risk_max` | int | — | Maximum risk score, 0–100. Must be at least `risk_min` |
+| `jailbroken` | bool | — | `true`/`1`/`yes` or `false`/`0`/`no` |
+| `app_id` | UUID | — | Restrict to one app. A UUID from another organization simply returns no rows |
+| `search` | string | — | Case-insensitive substring match on key ID, device model, OS version, or last country |
+
+Out-of-range risk bounds, a reversed range, an unparseable `jailbroken`, or a non-UUID `app_id` return `400`.
+
+### Response
+
+```json
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "key_id": "abc123keyid",
+      "app_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "app_name": "My App",
+      "device_model": "iPhone15,2",
+      "os_version": "18.0",
+      "app_version": "2.1.0",
+      "risk_score": 12,
+      "jailbreak_detected": false,
+      "is_development_build": false,
+      "app_store_receipt": true,
+      "attestation_count": 42,
+      "suspicious_events": 0,
+      "last_country": "US",
+      "first_seen": "2026-01-15T10:00:00Z",
+      "last_attestation": "2026-03-10T12:00:00Z"
+    }
+  ],
+  "page": 1,
+  "per": 20,
+  "total": 1250
+}
+```
+
+Devices are sorted by last attestation, newest first.
+
+### Example
+
+```bash
+# Every jailbroken device scoring 60 or above
+curl -H "Authorization: Bearer aat_your_api_key" \
+  "https://api.grantiva.io/api/v1/org/devices?risk_min=60&jailbroken=true&per=100"
+```
+
+---
+
+## Device inventory detail
+
+```
+GET /api/v1/org/devices/:keyId
+```
+
+Same authentication as the listing. Returns the full device record plus its 50 newest events under `recent_events`:
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "key_id": "abc123keyid",
+  "app_id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+  "app_name": "My App",
+  "device_model": "iPhone15,2",
+  "os_version": "18.0",
+  "app_version": "2.1.0",
+  "first_app_version": "2.0.0",
+  "risk_score": 12,
+  "jailbreak_detected": false,
+  "is_development_build": false,
+  "app_store_receipt": true,
+  "attestation_count": 42,
+  "suspicious_events": 0,
+  "last_suspicious_event_at": null,
+  "consecutive_clean_attestations": 42,
+  "permissions": [],
+  "last_country": "US",
+  "subject_id": null,
+  "first_seen": "2026-01-15T10:00:00Z",
+  "last_attestation": "2026-03-10T12:00:00Z",
+  "created_at": "2026-01-15T10:00:00Z",
+  "updated_at": "2026-03-10T12:00:00Z",
+  "recent_events": [
+    {
+      "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+      "event_type": "attestation_validated",
+      "key_id": "abc123keyid",
+      "device_id": "abc123",
+      "ip_address": "203.0.113.7",
+      "success": true,
+      "error_reason": null,
+      "risk_score": 12,
+      "created_at": "2026-03-10T12:00:00Z"
+    }
+  ]
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `is_development_build` | The attestation came from a non-App-Store build. Treated as jailbreak-equivalent in risk scoring |
+| `subject_id` | The sharing unit this device is linked to, when the app sends a `subjectId`. See [Subscription Claims](/concepts/subscription-claims) |
+| `consecutive_clean_attestations` | Attestations since the last suspicious event |
+
+`400` if `:keyId` is empty, `404` if the device isn't in your organization.

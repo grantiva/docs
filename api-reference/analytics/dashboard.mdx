@@ -1,27 +1,39 @@
 ---
-title: "Dashboard"
-description: "Get analytics dashboard data"
+title: "Reports"
+description: "Attestation and device analytics for your organization"
 ---
 
-## Request
+Grantiva exposes three analytics summaries. Which one you want depends on who is calling.
+
+| Endpoint | Auth | Shape |
+|----------|------|-------|
+| `GET /api/v1/analytics/report` | API key, `analytics:read` | The all-in-one report: devices, attestations, risk, compliance, breakdowns, geography |
+| `GET /api/v1/analytics/overview` | API key, `analytics:read` | A lightweight summary over the last 100 events |
+| `GET /api/v1/analytics/dashboard` | Dashboard session | The dashboard's headline metrics and 30-day chart series |
+
+API-key calls count against the `apikey` rate-limit bucket.
+
+---
+
+## Full report
 
 ```
-GET /api/v1/analytics/dashboard
+GET /api/v1/analytics/report
 ```
 
 ### Headers
 
 | Header | Required | Description |
 |--------|----------|-------------|
-| `X-API-Key` | Yes | Your API key |
+| `X-API-Key` | Yes | Your API key. `Authorization: Bearer <key>` works too |
 
 ### Query parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `timeRange` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d` |
+| `timeRange` | `string` | `30d` | `1d`, `7d`, `30d`, or `90d`. Anything else returns `400` |
 
-## Response
+### Response
 
 ```json
 {
@@ -44,23 +56,134 @@ GET /api/v1/analytics/dashboard
     "complianceRate": 98.4
   },
   "deviceBreakdown": {
-    "modelCounts": {
-      "iPhone15,2": 420,
-      "iPhone16,1": 310,
-      "iPhone14,5": 180
-    },
-    "osVersionCounts": {
-      "18.0": 650,
-      "17.5": 320,
-      "17.4": 180
+    "modelCounts": { "iPhone15,2": 420, "iPhone16,1": 310 },
+    "osVersionCounts": { "18.0": 650, "17.5": 320 }
+  },
+  "securityAlerts": [
+    {
+      "type": "suspicious_activity",
+      "severity": "high",
+      "message": "Suspicious activity detected",
+      "deviceId": "abc123keyid",
+      "timestamp": "2026-03-10T11:00:00Z"
     }
-  },
-  "geographicDistribution": {
-    "US": 580,
-    "DE": 120,
-    "JP": 95
-  },
+  ],
+  "geographicDistribution": { "US": 580, "DE": 120, "JP": 95 },
   "timeRange": "30d",
-  "generatedAt": "2025-03-10T12:00:00Z"
+  "generatedAt": "2026-03-10T12:00:00Z"
 }
 ```
+
+| Field | Description |
+|-------|-------------|
+| `totalDevices` | Every device profile ever seen |
+| `activeDevices` | Devices that attested inside `timeRange` |
+| `attestationStats.successRate` | Percentage, 0–100 |
+| `riskMetrics.highRiskDevices` | Devices scored above the high-risk threshold |
+| `securityAlerts` | Up to 10 most recent suspicious-activity events. `severity` is `high` at risk score 75+, otherwise `medium`; `deviceId` is the device's App Attest key ID |
+| `geographicDistribution` | Device counts by country, top 200 countries. Not limited by `timeRange` |
+
+<Note>`GET /api/v1/analytics/dashboard` used to serve this report. It now serves the session-authenticated dashboard summary below — API-key callers should use `/report`.</Note>
+
+---
+
+## Overview
+
+```
+GET /api/v1/analytics/overview
+```
+
+A cheap summary computed over the 100 most recent events in the window.
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `days` | `int` | 30 | Look-back window in days |
+
+### Response
+
+```json
+{
+  "totalAttestations": 100,
+  "successfulAttestations": 97,
+  "failedAttestations": 3,
+  "successRate": 97.0,
+  "uniqueDevices": 63,
+  "averageRiskScore": 14.2,
+  "suspiciousEvents": 1,
+  "recentEvents": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "eventType": "attestation_validated",
+      "keyId": "abc123keyid",
+      "deviceId": "abc123",
+      "ipAddress": "203.0.113.7",
+      "success": true,
+      "errorReason": null,
+      "riskScore": 12,
+      "createdAt": "2026-03-10T12:00:00Z"
+    }
+  ]
+}
+```
+
+`recentEvents` holds the 20 newest events. Because the counts are computed from at most 100 events, treat them as a sample, not a total — use [Events](/api-reference/analytics/events) for exact counts.
+
+---
+
+## Dashboard summary
+
+```
+GET /api/v1/analytics/dashboard
+```
+
+Requires a dashboard session. Covers a fixed 30-day window.
+
+### Query parameters
+
+| Parameter | Type | Description |
+|-----------|------|-------------|
+| `compare` | `string` | Pass `7d` to include a `comparison` object with the previous 7-day window (days −14 to −7) |
+
+### Response
+
+```json
+{
+  "totalAttestations": 15420,
+  "activeDevices": 890,
+  "madThisMonth": 890,
+  "madLimit": 25000,
+  "avgRiskScore": 18.5,
+  "attestationsToday": 512,
+  "attestationsLast7d": 3980,
+  "attestationsLast30d": 15420,
+  "dailyAttestations": [
+    { "date": "2026-03-10", "count": 512 }
+  ],
+  "riskDistribution": { "low": 14000, "medium": 900, "high": 400, "critical": 120 },
+  "successRate": 97.9,
+  "failureRate": 2.1,
+  "comparison": {
+    "totalAttestations": 3800,
+    "activeDevices": 840,
+    "madThisMonth": 840,
+    "avgRiskScore": 17.9,
+    "successRate": 97.4
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `activeDevices` / `madThisMonth` | Devices that attested since the start of the calendar month |
+| `madLimit` | Your tier's MAD cap, `null` on Enterprise |
+| `dailyAttestations` | Ascending by `date` (`YYYY-MM-DD`) |
+| `riskDistribution` | Event counts by risk band: `low` 0–20, `medium` 21–50, `high` 51–75, `critical` 76–100 |
+| `comparison` | Present only with `?compare=7d` |
+
+## See also
+
+- [Events](/api-reference/analytics/events) — the paginated event log
+- [Compliance](/api-reference/analytics/compliance)
+- [Export](/api-reference/analytics/export)

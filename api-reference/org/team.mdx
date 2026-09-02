@@ -1,0 +1,163 @@
+---
+title: "Team & Invites"
+description: "List members, invite teammates, revoke invites, and remove members"
+---
+
+Seats are limited by plan: Free 1, Pro 3, Business 10, Enterprise 50. Pending invites hold a seat until they are accepted, revoked, or expire.
+
+## Authentication
+
+These endpoints accept either a dashboard session cookie or a server API key sent as `Authorization: Bearer <key>`.
+
+| Endpoint | Session role | Key scope |
+|----------|--------------|-----------|
+| `GET /api/v1/org/members` | Any member | `org:read` |
+| `GET /api/v1/org/invites` | Any member | `org:read` |
+| `POST /api/v1/org/invite` | Admin | `admin:team` |
+| `DELETE /api/v1/org/invites/:inviteId` | Admin | `admin:team` |
+| `POST /api/v1/org/members/:membershipId/remove` | Admin | `admin:team` |
+
+Roles, lowest to highest: **Viewer**, **Member**, **Admin**, **Owner**.
+
+<Note>`admin:team` is an Enterprise-only scope, so on other plans the write endpoints are reachable with a dashboard session but not with an API key. Reads only need `org:read`, which every paid plan can grant.</Note>
+
+---
+
+## List members
+
+```
+GET /api/v1/org/members
+```
+
+Returns every membership in the organization, oldest join first.
+
+**Response**
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "userId": "661f9511-f3ac-52e5-b827-557766551111",
+    "email": "you@example.com",
+    "orgRole": "admin",
+    "joinedAt": "2026-01-15T12:00:00Z"
+  }
+]
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `id` | string (UUID) | Membership id — pass this to the remove endpoint |
+| `userId` | string (UUID) | The user behind the membership |
+| `orgRole` | string | `owner`, `admin`, `member`, or `viewer` |
+
+---
+
+## List pending invites
+
+```
+GET /api/v1/org/invites
+```
+
+Returns invites with status `pending` only, newest first.
+
+**Response**
+
+```json
+[
+  {
+    "id": "7f3e2a10-1b2c-4d5e-8f90-112233445566",
+    "email": "teammate@example.com",
+    "orgRole": "member",
+    "status": "pending",
+    "invitedBy": "you@example.com",
+    "expiresAt": "2026-08-02T12:00:00Z",
+    "createdAt": "2026-07-26T12:00:00Z"
+  }
+]
+```
+
+`status` is one of `pending`, `accepted`, `expired`, `revoked`. `invitedBy` is `null` when the invite was created by an API key.
+
+---
+
+## Send an invite
+
+```
+POST /api/v1/org/invite
+```
+
+Emails an invitation link to the address. The invite is valid for 7 days.
+
+**Request body**
+
+```json
+{
+  "email": "teammate@example.com",
+  "orgRole": "member"
+}
+```
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `email` | string | Yes | Must be a valid email address |
+| `orgRole` | string | No | `owner`, `admin`, `member`, or `viewer`. Defaults to `member` |
+
+**Response** — `200 OK` — the invite object (same shape as the list response).
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 403 | Caller is not an Admin, or the plan's seat limit is reached (members + pending invites) |
+| 409 | The address is already a member, or a pending invite already exists for it |
+
+Revoked and expired invites do not block re-inviting the same address.
+
+The invitee accepts with [`POST /api/v1/auth/accept-invite`](/api-reference/auth/account#accept-a-team-invite).
+
+---
+
+## Revoke an invite
+
+```
+DELETE /api/v1/org/invites/:inviteId
+```
+
+Marks the invite revoked, freeing its seat and allowing the same address to be invited again. Revoking an already-revoked invite is a no-op.
+
+**Response** — `204 No Content`
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 404 | Invite not found in this organization |
+| 409 | The invite was already accepted — remove the member instead |
+
+---
+
+## Remove a member
+
+```
+POST /api/v1/org/members/:membershipId/remove
+```
+
+Deletes the membership. The user account itself is not deleted.
+
+**Response** — `204 No Content`
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | You cannot remove yourself |
+| 403 | The target has an equal or higher role than you. API keys act at admin level: they can remove members and viewers, never admins or the owner |
+| 404 | Membership not found in this organization |
+
+---
+
+## See also
+
+- [Organization Settings](/api-reference/org/settings)
+- [API Keys](/api-reference/org/api-keys)

@@ -1,46 +1,91 @@
 ---
 title: "Dashboard Overview"
-description: "Manage your apps, team, and settings from the Grantiva dashboard"
+description: "Find your way around the Grantiva dashboard"
 ---
 
-The Grantiva dashboard at [grantiva.io/dashboard](https://grantiva.io/dashboard) is where you manage your apps, view analytics, configure settings, and invite team members.
+The Grantiva dashboard at [grantiva.io/dashboard](https://grantiva.io/dashboard) is where you register apps, watch attestations, configure claims and flags, and manage your organization.
 
 ## Getting started
 
-After signing up, you'll land on the onboarding page to add your first app. You'll need:
+After signing up you name your organization, then register your first app. You'll need:
 
-- **App name** — A display name for your app
-- **Apple Team ID** — From your Apple Developer account
-- **Bundle ID** — Your app's bundle identifier (e.g., `com.yourcompany.yourapp`)
+- **App name** — a display name for your app
+- **Platform** — iOS or Android
+- **Bundle ID** — your app's bundle identifier, e.g. `com.yourcompany.yourapp`
+- **Apple Team ID** — from your Apple Developer account
+
+The **Overview** page carries an onboarding checklist that walks the rest of the way: add the SDK in Xcode, complete a first attestation, create a feature flag, invite a teammate, run visual testing, and wire up in-app feedback. You can dismiss it and bring it back from **Getting Started** in the sidebar footer.
 
 ## Navigation
 
-| Section | Description |
-|---------|-------------|
-| **Dashboard** | At-a-glance metrics: total devices, attestations, risk distribution |
-| **Analytics** | Detailed charts: attestation trends, device models, OS versions, MAD usage |
-| **Settings** | App configuration: name, Team ID, Bundle ID, API keys |
-| **Account Settings** | Account name, billing, plan management |
-| **Team** | Invite and manage team members with role-based access |
-| **Webhooks** | Create and manage webhook endpoints (Pro+) |
-| **Audit Log** | Track security-relevant actions across your account |
-| **Profile** | Your email, password, and passkey management |
+The sidebar is grouped into four sections plus a footer.
+
+| Item | What it's for |
+|------|---------------|
+| **Overview** | At-a-glance cards — devices online now, feature flags, visual testing runs, open feature requests, open support tickets, attestation health — plus your MAD usage and the onboarding checklist |
+| **Quick Start** | A ready-to-paste SDK snippet with your Team ID and Bundle ID already filled in, and the Swift Package URL |
+| **Apps** | Register, edit, and delete apps. Each app is a Bundle ID + Team ID pair |
+| **Devices** | Every device that has attested, with search and risk filtering. See [Devices](/dashboard/devices) |
+| **Attestation** | Attestation volume, success and failure counts, risk distribution, and the recent event log. See [Attestation analytics](/dashboard/analytics) |
+
+### Configure
+
+| Item | What it's for |
+|------|---------------|
+| **Custom Claims** | Create and order the claims Grantiva signs into your tokens. See [Custom Claims](/concepts/custom-claims) |
+| **Feature Flags** | Create flags, set per-environment values, target devices, and inspect evaluations. See [Feature flags in the dashboard](/dashboard/feature-flags) |
+| **Environments** | Name and colour the deployment environments your flags are evaluated against |
+| **Webhooks** | Create endpoints, pick events, send a test delivery. Pro and above. See [Webhooks](/concepts/webhooks) |
+| **API Keys** | Create, rotate, and revoke server-to-server keys. Paid plans only. See [Settings, keys, and audit log](/dashboard/settings) |
+
+### Products
+
+| Item | What it's for |
+|------|---------------|
+| **Visual Testing** | Screenshot runs and baseline review. See [Visual Regression Testing](/concepts/vrt) |
+| **Feedback** | Feature requests from your users, with status, assignee, votes, and comments. See [Feedback and support](/dashboard/feedback) |
+| **Support** | Support tickets from your users, with status, priority, assignee, and replies |
+
+### Organization
+
+| Item | What it's for |
+|------|---------------|
+| **Team** | Invite teammates, revoke invites, remove members. See [Team Management](/dashboard/team-management) |
+| **Plan & Usage** | Your current plan, billing period reset date, and Monthly Active Device meter |
+| **Billing** | Plan comparison, upgrade, downgrade request, cancellation, and the Stripe billing portal. See [Billing & Plans](/dashboard/billing) |
+| **Audit Log** | Every security-relevant action, searchable by action, actor, and resource type |
+
+### Footer
+
+**Settings** covers organization name and slug, notification preferences, the attestation failure-rate alert, and organization deletion. **Profile** covers your email and password.
 
 ## Roles
 
 | Role | Permissions |
 |------|------------|
-| **Owner** | Full access. Can delete the account. |
-| **Admin** | Manage members, settings, and API keys. |
-| **Member** | Create and manage projects. |
-| **Viewer** | Read-only access to dashboard and analytics. |
+| **Owner** | Everything, including deleting the organization |
+| **Admin** | Manage members, settings, API keys, webhooks, claims, and flags |
+| **Member** | Register apps and edit flags, claims, and webhooks |
+| **Viewer** | Read-only |
+
+Roles are set when you invite someone and can't be changed afterwards. See [Team Management](/dashboard/team-management).
+
+## Plan gating
+
+No sidebar item is hidden by plan — pages tell you when a feature needs an upgrade instead:
+
+- **Webhooks** requires Pro or higher
+- **API Keys** requires any paid plan
+- **Custom Claims** offers static claims on Free; conditional and dynamic on Pro and above; external claims on Enterprise
+- **Visual Testing** caps baseline screens at 5 on Free and 25 on Pro
 
 ## API keys
 
-The dashboard shows your **server-to-server API keys**. These are for backend integrations (analytics API, VRT CLI, etc.) — not for embedding in your iOS app.
+The dashboard issues **server-to-server API keys** for backend integrations — the analytics API, the CLI, flag and claim management. They are never for embedding in your iOS app; attested clients don't need one.
 
-Key prefixes:
-- `aat_` — Organization API keys
-- `gpat_` — Personal API keys
+| Prefix | Key type |
+|--------|----------|
+| `aat_` | Organization key |
+| `gpat_` | Personal key |
 
-Regenerate keys from **Settings** if compromised.
+The secret is shown **once**, when the key is created. Rotate or revoke from **API Keys**.

@@ -15,7 +15,7 @@ Without device attestation, anyone can:
 - Run your app in emulators or modified environments
 - Replay or forge API requests
 
-Attestation stops all of these attacks.
+Attestation raises the bar on all of these: a request that carries a valid attestation JWT provably came from a genuine, unmodified copy of your app on real Apple hardware.
 
 ## How it works
 
@@ -40,27 +40,27 @@ Attestation stops all of these attacks.
 ```
 
 1. Your app requests a one-time challenge from Grantiva
-2. Grantiva returns a cryptographic challenge
+2. Grantiva returns a cryptographic challenge — single-use, and valid for 5 minutes by default
 3. The SDK calls Apple's App Attest to create an attestation
 4. Apple returns a signed attestation object
 5. The SDK sends it to Grantiva for validation
-6. Grantiva verifies the attestation with Apple's servers
+6. Grantiva validates the attestation against Apple's certificate chain
 7. A signed JWT is returned with device intelligence and risk score
 
 ## No API keys on-device
 
 Your app is identified by its **Bundle ID** and **Team ID** — both are sent automatically by the SDK. No API keys are stored in the app binary, so there's nothing to extract or steal.
 
-Server-to-server API keys (visible in the dashboard) are for backend operations only.
+Server-to-server API keys (created under **API Keys** in the dashboard) are for backend operations only.
 
 ## What the JWT contains
 
 On paid plans the attestation JWT is signed device intelligence, not just a proof of attestation:
 
-- Device integrity status
-- Risk score (0–100)
-- Jailbreak detection
-- Attestation count and history (`first_seen`, `attestation_count`)
+- Device integrity status (`device_integrity`)
+- Risk score, 0–100 (`risk_score`)
+- Jailbreak detection (`jailbreak_detected`)
+- Attestation history (`first_seen`, `attestation_count`, `last_attestation`)
 - Your [custom claims](/concepts/custom-claims) if configured
 
 Exactly which claims are present depends on your plan — the Free plan token carries no device intelligence, and device model / OS version are Enterprise-only *in the token*. See [JWT Claims](/concepts/jwt-claims) for the full per-plan claim table, a decoded example, and server-side verification code.
@@ -70,7 +70,7 @@ Exactly which claims are present depends on your plan — the Free plan token ca
 App Attest is not available in the iOS simulator. For development, initialize the SDK with an API key:
 
 ```swift
-let grantiva = Grantiva(teamId: "...", apiKey: "your-dev-key")
+let grantiva = Grantiva(teamId: "YOUR_TEAM_ID", apiKey: "your-dev-key")
 ```
 
-This returns a synthetic attestation result with `deviceIntegrity: "api_key_mode"`. Never ship API keys in production builds.
+This returns a synthetic attestation result with `deviceIntegrity: "api_key_mode"`. These requests are unattested — they carry lower trust and no risk scoring. Never ship an API key in a production build. See [Simulator setup](/simulator-setup) and [Testing](/sdk/testing).

@@ -7,10 +7,12 @@ Custom claims are values Grantiva injects into the JWT minted after successful a
 
 ## Authentication
 
-All endpoints require a dashboard session (cookie-based) and organization membership.
+`/api/v1/claims` requires a dashboard session (cookie-based) and organization membership.
 
 - **Read and test operations** (list, get, test, preview): any organization member.
 - **Write operations** (create, update, delete, bulk, reorder): **Admin** role or above.
+
+A second surface, `/api/v1/org/claims`, exposes the same model to API keys for the CLI and scripts — see [Console API](#console-api).
 
 ## Claim definition fields
 
@@ -333,3 +335,104 @@ Limits count **active** claims only.
 - [Custom Claims Concepts](/concepts/custom-claims) — evaluation model and tier features
 - [Subscription Claims](/concepts/subscription-claims) — the reserved `subscription` claim
 - [Validate Attestation](/api-reference/attestation/validate) — where claims appear in the minted token
+
+---
+
+## Console API
+
+`/api/v1/org/claims` is the same claim model reachable with an **API key** (`Authorization: Bearer gpat_…`/`aat_…`) as well as a dashboard session. It's what the `grantiva` CLI uses.
+
+| Operation | Key scope | Session role |
+|-----------|-----------|--------------|
+| List, get | `claims:read` | viewer+ |
+| Create, update, reorder | `claims:write` | admin+ |
+| Delete | `claims:delete` | admin+ |
+| Test, preview | `claims:test` | viewer+ |
+
+Top-level field names are snake_case on this surface; the nested `conditional_rules`, `external_config`, and `validation_rules` objects keep the same schema as `/api/v1/claims`. `:claimRef` accepts a claim UUID or a `claim_key`.
+
+### Endpoints
+
+| Method | Path | Notes |
+|--------|------|-------|
+| `GET` | `/api/v1/org/claims` | Array of claims, priority then key |
+| `POST` | `/api/v1/org/claims` | `201 Created` with the claim |
+| `GET` | `/api/v1/org/claims/:claimRef` | One claim |
+| `PUT` | `/api/v1/org/claims/:claimRef` | Partial update; key, type, and data type are immutable |
+| `DELETE` | `/api/v1/org/claims/:claimRef` | `{ "deleted": true, "id": "…" }` |
+| `PUT` | `/api/v1/org/claims/reorder` | `{ "claim_refs": [...] }` — every claim, exactly once |
+| `POST` | `/api/v1/org/claims/test` | Evaluate an unsaved definition |
+| `POST` | `/api/v1/org/claims/:claimRef/preview` | Evaluate a saved claim |
+
+There is no bulk-create on this surface.
+
+### The console claim object
+
+```json
+{
+  "id": "550e8400-e29b-41d4-a716-446655440000",
+  "claim_key": "user_tier",
+  "claim_name": "User Tier",
+  "claim_type": "conditional",
+  "data_type": "string",
+  "description": "Trust tier derived from risk score",
+  "is_active": true,
+  "priority": 0,
+  "static_value": null,
+  "conditional_rules": [
+    {
+      "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+      "operator": "AND",
+      "conditions": [
+        { "field": "risk_score", "operator": "less_than", "value": "20" }
+      ],
+      "value": "trusted",
+      "priority": 0
+    }
+  ],
+  "dynamic_expression": null,
+  "external_config": null,
+  "validation_rules": null,
+  "created_at": "2026-03-01T12:00:00Z",
+  "updated_at": "2026-03-10T08:30:00Z"
+}
+```
+
+Create takes the same fields (minus `id`, `created_at`, `updated_at`), with the same validation and tier rules as `/api/v1/claims`. An update body with no updatable field returns `400`.
+
+### Test and preview
+
+```bash
+curl -X POST https://api.grantiva.io/api/v1/org/claims/user_tier/preview \
+  -H "Authorization: Bearer aat_your_api_key" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "context": {
+      "device": { "key_id": "test-device-1", "risk_score": 12, "os_version": "18.0" },
+      "additional_data": { "plan": "monthly" }
+    }
+  }'
+```
+
+Every `device` field is optional — unset values default to `preview-device`, risk score `0`, and attestation count `1`. `POST /api/v1/org/claims/test` takes the same `context` plus a `claim` object holding the unsaved definition.
+
+```json
+{
+  "claim_key": "user_tier",
+  "evaluated_value": "trusted",
+  "data_type": "string",
+  "evaluation_time_ms": 1.42,
+  "errors": null
+}
+```
+
+Testing an `external` claim requires the Enterprise tier, because evaluation makes the server call your configured endpoint.
+
+### Errors
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Invalid `claim_key`, reserved `subscription` key, missing type-specific configuration, an update with no updatable fields, or a reorder that doesn't list every claim exactly once |
+| 403 | Key lacks the required scope, session role too low, tier claim limit reached, or claim type unavailable on your tier |
+| 404 | No claim matches `:claimRef` in your organization |
+| 409 | A claim with that `claim_key` already exists |

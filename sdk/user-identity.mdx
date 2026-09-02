@@ -28,6 +28,8 @@ Or with just a user ID:
 await grantiva.identify("user_123")
 ```
 
+Both overloads are `async` — `identify` clears the feedback and flag caches so the next read re-fetches under the new identity.
+
 All services (feedback, flags) automatically use this context after identification. Caches are cleared on identity change so services re-fetch with the new context.
 
 ## UserContext
@@ -57,7 +59,7 @@ Separate from user identity, `setSubjectId` links the device to a **sharing unit
 
 ```swift
 // A stable UUID string your app mints per household
-grantiva.setSubjectId(familyId)
+grantiva.setSubjectId(familyId.uuidString)
 
 // When the device leaves the household
 grantiva.clearSubjectId()
@@ -66,7 +68,7 @@ grantiva.clearSubjectId()
 let current = grantiva.subjectId
 ```
 
-The id rides the next attestation or token refresh; the backend then projects `custom_claims.subscription` into the JWT for every device sharing the same id. Use the identical value as the StoreKit `appAccountToken` and Stripe `client_reference_id`.
+Unlike `identify`, these three are synchronous and do not clear any caches. Set the subject id **before** calling `validateAttestation()`. The id rides the next attestation or token refresh; the backend then projects `custom_claims.subscription` into the JWT for every device sharing the same id. Use the identical value as the StoreKit `appAccountToken` and Stripe `client_reference_id`.
 
 Don't confuse the two:
 
@@ -81,13 +83,21 @@ Don't confuse the two:
 The SDK automatically collects device context — you don't need to set this:
 
 ```swift
-grantiva.currentUserContext?.device.appBundleId    // "com.yourapp"
-grantiva.currentUserContext?.device.appVersion      // "2.1.0"
-grantiva.currentUserContext?.device.deviceModel     // "iPhone15,2"
-grantiva.currentUserContext?.device.osVersion       // "18.0"
-grantiva.currentUserContext?.device.locale          // "en_US"
-grantiva.currentUserContext?.device.environment     // "device" or "simulator"
+let device = grantiva.currentUserContext?.device
+
+device?.appBundleId    // "com.example.MyApp"
+device?.appVersion     // "1.4.0"  — your app's CFBundleShortVersionString
+device?.appBuildNumber // "412"    — your app's CFBundleVersion
+device?.deviceModel    // "iPhone15,2"
+device?.osName         // "iOS" or "macOS"
+device?.osVersion      // "18.0"
+device?.locale         // "en_US"
+device?.timezone       // "America/Chicago"
+device?.sdkVersion     // "2.1.0"  — the Grantiva SDK version
+device?.environment    // "device" or "simulator"
 ```
+
+`DeviceContext` is captured when you construct the `UserContext`, so it reflects the app and OS at that moment. You can't set these fields yourself; your own `properties` take precedence if you use the same key.
 
 ## Clear identity
 

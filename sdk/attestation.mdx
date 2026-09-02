@@ -30,17 +30,30 @@ result.customClaims         // [String: Any] — your custom JWT claims
 ### DeviceIntelligence
 
 ```swift
-result.deviceIntelligence.deviceId           // String — unique device ID
-result.deviceIntelligence.riskScore          // Int? — 0–100 (Pro and above); nil on Free tier
-result.deviceIntelligence.deviceIntegrity    // String — integrity status
-result.deviceIntelligence.jailbreakDetected  // Bool
-result.deviceIntelligence.attestationCount   // Int — total attestations from this device
+result.deviceIntelligence.deviceId            // String — unique device ID
+result.deviceIntelligence.riskScore           // Int? — 0–100 (Pro and above); nil on Free tier and in API key mode
+result.deviceIntelligence.riskCategory        // RiskCategory — .trusted, .suspicious, or .blocked (all tiers)
+result.deviceIntelligence.deviceIntegrity     // String — integrity status
+result.deviceIntelligence.jailbreakDetected   // Bool
+result.deviceIntelligence.attestationCount    // Int — total attestations from this device
 result.deviceIntelligence.lastAttestationDate // Date?
 ```
 
+`RiskCategory` has three cases and is present on every plan:
+
+| Case | Score band |
+|---|---|
+| `.trusted` | 0–20 |
+| `.suspicious` | 21–75 |
+| `.blocked` | 76–100 |
+
+An unrecognized category string from the server decodes as `.trusted`.
+
 ## Token caching
 
-The SDK automatically caches valid tokens. Calling `validateAttestation()` multiple times reuses the cached token until it expires, then performs a fresh attestation.
+The SDK caches the JWT in the Keychain. Calling `validateAttestation()` again returns the cached token until it is within **5 minutes** of expiry, at which point the SDK gets a new one.
+
+Renewal does not re-run the full attest flow. Once a key has been attested, the SDK refreshes by generating an App Attest *assertion* against a fresh challenge — App Attest permits only one attestation per key over its lifetime. If Apple or the server rejects that assertion (`assertionKeyInvalid`, `reattestRequired`), the SDK clears the local key state and runs one full attestation with a new key.
 
 ```swift
 // First call — full attestation flow
@@ -61,7 +74,11 @@ if let result = try await grantiva.refreshToken() {
 }
 ```
 
-Returns `nil` if no token has been stored yet (call `validateAttestation()` first).
+Returns `nil` if no token has been stored yet — call `validateAttestation()` first.
+
+<Note>
+When the stored token is still valid, `refreshToken()` returns it without contacting the server, and the `deviceIntelligence` on that result is a placeholder (`riskScore` is `nil`, `deviceIntegrity` is `"valid"`). Read device intelligence from the `validateAttestation()` result, not from `refreshToken()`.
+</Note>
 
 ## Check token status
 
@@ -81,7 +98,16 @@ Force a fresh attestation on the next call:
 grantiva.clearStoredData()
 ```
 
-This clears cached keys and tokens from the Keychain. Useful for testing or user logout.
+This clears cached keys and tokens from the Keychain and stops the SDK's background work — the usage heartbeat and the flag update stream. Useful for testing or user logout.
+
+## Background activity
+
+A successful attestation starts two background tasks:
+
+- **Usage heartbeat** — a fire-and-forget ping every 120 seconds while the app is running, used for Monthly Active Device counting.
+- **Flag streaming** — a Server-Sent Events connection for live feature flag updates. On iOS the SDK stops it when the app backgrounds and restarts it on foreground.
+
+Both stop when you call `clearStoredData()`.
 
 ## Use the token
 

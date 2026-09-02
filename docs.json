@@ -46,6 +46,19 @@
               "cli/installation",
               "cli/configuration",
               "cli/commands",
+              "cli/simulators",
+              {
+                "group": "Console",
+                "pages": [
+                  "cli/console",
+                  "cli/console-flags",
+                  "cli/console-apps",
+                  "cli/console-analytics",
+                  "cli/console-vrt",
+                  "cli/console-feedback",
+                  "cli/console-org"
+                ]
+              },
               "cli/mcp",
               "cli/ci-integration"
             ]
@@ -74,8 +87,12 @@
             "pages": [
               "dashboard/overview",
               "dashboard/analytics",
+              "dashboard/devices",
+              "dashboard/feature-flags",
+              "dashboard/feedback",
               "dashboard/billing",
-              "dashboard/team-management"
+              "dashboard/team-management",
+              "dashboard/settings"
             ]
           }
         ]
@@ -116,7 +133,8 @@
               "api-reference/feedback/feature-requests",
               "api-reference/feedback/voting",
               "api-reference/feedback/comments",
-              "api-reference/feedback/support-tickets"
+              "api-reference/feedback/support-tickets",
+              "api-reference/feedback/console"
             ]
           },
           {
@@ -124,8 +142,10 @@
             "pages": [
               "api-reference/flags/get-flags",
               "api-reference/flags/stream",
+              "api-reference/flags/evaluate",
               "api-reference/flags/rules",
-              "api-reference/flags/overrides"
+              "api-reference/flags/overrides",
+              "api-reference/flags/manage"
             ]
           },
           {
@@ -138,6 +158,7 @@
             "group": "Analytics",
             "pages": [
               "api-reference/analytics/dashboard",
+              "api-reference/analytics/events",
               "api-reference/analytics/devices",
               "api-reference/analytics/compliance",
               "api-reference/analytics/export"
@@ -147,16 +168,18 @@
             "group": "Webhooks",
             "pages": [
               "api-reference/webhooks/endpoints",
-              "api-reference/webhooks/events",
-              "api-reference/org/webhook-endpoints"
+              "api-reference/webhooks/events"
             ]
           },
           {
             "group": "Organization",
             "pages": [
               "api-reference/org/api-keys",
+              "api-reference/org/team",
               "api-reference/org/settings",
-              "api-reference/org/risk-alerts"
+              "api-reference/org/release-notes",
+              "api-reference/org/risk-alerts",
+              "api-reference/org/alerts"
             ]
           },
           {
@@ -237,10 +260,26 @@
     ]
   },
   "redirects": [
-    { "source": "/sdk/ios", "destination": "/sdk/installation" },
-    { "source": "/testing", "destination": "/sdk/testing" },
-    { "source": "/pricing", "destination": "/#pricing" },
-    { "source": "/blog/:slug*", "destination": "/quickstart" }
+    {
+      "source": "/sdk/ios",
+      "destination": "/sdk/installation"
+    },
+    {
+      "source": "/testing",
+      "destination": "/sdk/testing"
+    },
+    {
+      "source": "/pricing",
+      "destination": "/#pricing"
+    },
+    {
+      "source": "/blog/:slug*",
+      "destination": "/quickstart"
+    },
+    {
+      "source": "/api-reference/org/webhook-endpoints",
+      "destination": "/api-reference/webhooks/endpoints"
+    }
   ],
   "footer": {
     "socials": {

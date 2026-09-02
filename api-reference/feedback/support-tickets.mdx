@@ -3,18 +3,25 @@ title: "Support Tickets"
 description: "Create and manage support tickets"
 ---
 
-## Create a ticket
+The end-user side of support: your app's users open tickets and reply to them. Staff replies, status, and priority live on the [console API](/api-reference/feedback/console).
 
-```
-POST /api/v1/support/tickets
-```
-
-### Headers
+## Authentication
 
 | Header | Required | Description |
 |--------|----------|-------------|
 | `X-Bundle-ID` | Yes | App bundle identifier |
 | `X-Team-ID` | Yes | Apple Developer Team ID |
+| `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side/simulator callers. Identity headers alone return 401. See [Authentication](/api-reference/authentication) |
+
+API-key callers need `feedback:read` for reads and `feedback:write` for writes.
+
+---
+
+## Create a ticket
+
+```
+POST /api/v1/support/tickets
+```
 
 ### Body
 
@@ -30,45 +37,54 @@ POST /api/v1/support/tickets
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `subject` | `string` | Yes | 3–200 characters |
-| `body` | `string` | Yes | 10–5,000 characters |
+| `subject` | `string` | Yes | Non-empty after trimming, max 200 characters |
+| `body` | `string` | Yes | Non-empty after trimming, max 10,000 characters. Becomes the ticket's first message |
 | `submitterId` | `string` | Yes | User or device identifier |
-| `submitterEmail` | `string` | No | Contact email for replies |
+| `submitterEmail` | `string` | No | Contact email for replies; validated when present |
 | `deviceHash` | `string` | No | Device hash |
+
+Validation failures return `422` with a `fields` array naming `subject`, `message`, or `email`.
 
 ### Response
 
-Returns the created ticket with messages.
+The created ticket with its first message (same shape as [Get ticket](#get-ticket-with-messages)).
 
 ---
 
-## List user's tickets
+## List a user's tickets
 
 ```
 GET /api/v1/support/tickets
 ```
 
+Returns that submitter's tickets, newest first. Not paginated.
+
 ### Query parameters
 
 | Parameter | Type | Required | Description |
 |-----------|------|----------|-------------|
-| `submitter_id` | `string` | Yes | User or device identifier |
+| `submitter_id` | `string` | Yes | User or device identifier. Missing values return `400` |
 
 ### Response
 
 ```json
 [
   {
-    "id": "uuid",
+    "id": "550e8400-e29b-41d4-a716-446655440000",
     "subject": "App crashes on launch",
     "status": "open",
     "priority": "normal",
     "messageCount": 3,
-    "createdAt": "2025-03-10T12:00:00Z",
-    "updatedAt": "2025-03-10T14:00:00Z"
+    "createdAt": "2026-03-10T12:00:00Z",
+    "updatedAt": "2026-03-10T14:00:00Z"
   }
 ]
 ```
+
+| Field | Values |
+|-------|--------|
+| `status` | `open`, `awaiting_reply`, `resolved`, `closed` |
+| `priority` | `low`, `normal`, `high`, `urgent` |
 
 ---
 
@@ -78,34 +94,39 @@ GET /api/v1/support/tickets
 GET /api/v1/support/tickets/:ticketId
 ```
 
+Returns the ticket plus every message, oldest first.
+
 ### Response
 
 ```json
 {
-  "id": "uuid",
+  "id": "550e8400-e29b-41d4-a716-446655440000",
   "subject": "App crashes on launch",
   "status": "open",
   "priority": "normal",
   "messageCount": 3,
-  "createdAt": "2025-03-10T12:00:00Z",
+  "createdAt": "2026-03-10T12:00:00Z",
+  "updatedAt": "2026-03-10T14:00:00Z",
   "messages": [
     {
-      "id": "uuid",
-      "ticketId": "uuid",
+      "id": "6f9619ff-8b86-d011-b42d-00cf4fc964ff",
+      "ticketId": "550e8400-e29b-41d4-a716-446655440000",
       "authorType": "user",
       "body": "After updating to v2.1...",
-      "createdAt": "2025-03-10T12:00:00Z"
+      "createdAt": "2026-03-10T12:00:00Z"
     },
     {
-      "id": "uuid",
-      "ticketId": "uuid",
+      "id": "7c9e6679-7425-40de-944b-e07fc1f90ae7",
+      "ticketId": "550e8400-e29b-41d4-a716-446655440000",
       "authorType": "admin",
       "body": "Thanks for reporting. Can you share your device model?",
-      "createdAt": "2025-03-10T13:00:00Z"
+      "createdAt": "2026-03-10T13:00:00Z"
     }
   ]
 }
 ```
+
+`404` if the ticket doesn't belong to your organization.
 
 ---
 
@@ -124,6 +145,16 @@ POST /api/v1/support/tickets/:ticketId/messages
 }
 ```
 
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `authorId` | `string` | Yes | User or device identifier |
+| `body` | `string` | Yes | Non-empty after trimming |
+
 ### Response
 
-Returns the created message object.
+The created message, with `authorType: "user"`. Messages posted here are always attributed to the user — staff replies go through the [console API](/api-reference/feedback/console).
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Empty `body`, or `:ticketId` is not a UUID |
+| 404 | No such ticket in your organization |

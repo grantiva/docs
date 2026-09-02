@@ -7,7 +7,7 @@ Grantiva Push is a channel-based publish/subscribe service for Apple push notifi
 
 ## Concepts
 
-- **App** — a registered application with its own APNs `.p8` credentials and API keys. Push apps are provisioned by Grantiva and appear in your org dashboard (contact [support](mailto:support@grantiva.io) to register one). APNs credentials are stored AES-256-GCM encrypted and can be added or rotated after registration.
+- **App** — a registered application with its own APNs `.p8` credentials and API keys. Push apps are provisioned by Grantiva — contact [support](mailto:support@grantiva.io) to register one — and are read back over the org API rather than the dashboard, which has no push screen today. APNs credentials are stored AES-256-GCM encrypted and can be added or rotated after registration.
 - **Channel** — an opaque string your app chooses (`order:42:status`, `chat:<uuid>`, `broadcast`). Grantiva assigns no meaning to channels; they're created implicitly on first subscribe and matched exactly (no wildcards in v1). Max 255 printable characters.
 - **Subscription** — a device token subscribed to a channel. Three token types: `alert` (standard push), `liveactivity-start` (push-to-start, rotates), and `liveactivity-update` (per-activity, requires `activityID`).
 - **Event** — a publish: an event name plus a push spec, fanned out to all subscribed tokens of the relevant type. A token subscribed to several published channels receives one push.
@@ -21,7 +21,7 @@ Each push app has two keys, issued once at creation (stored hashed — save them
 | Public | `grv_pub_` | `X-API-Key` or `Authorization: Bearer` | Manage subscriptions (safe to ship in your app) |
 | Secret | `grv_sec_` | `Authorization: Bearer` or `X-API-Key` | Publish + manage subscriptions (server-side only) |
 
-Subscription endpoints are rate-limited to **240 requests/min per key**.
+Keys are matched by SHA-256 hash and never stored or compared in plaintext. Subscription endpoints are rate-limited to **240 requests/min per key**; exceeding it returns `429` with a `Retry-After` header.
 
 ## Typical flow
 

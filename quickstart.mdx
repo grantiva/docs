@@ -37,7 +37,7 @@ Or add it to your `Package.swift`:
 
 ```swift
 dependencies: [
-    .package(url: "https://github.com/grantiva/ios-sdk", from: "2.0.0")
+    .package(url: "https://github.com/grantiva/ios-sdk", from: "2.1.0")
 ]
 ```
 
@@ -61,10 +61,11 @@ That's it. The SDK reads your Bundle ID automatically from `Bundle.main`.
 do {
     let result = try await grantiva.validateAttestation()
     print("Device verified: \(result.isValid)")
+    // riskCategory is available on every plan
+    print("Risk category: \(result.deviceIntelligence.riskCategory)")
+    // riskScore is nil on the Free tier and in API key mode
     if let score = result.deviceIntelligence.riskScore {
-        print("Risk score: \(score)")  // Pro+ only
-    } else {
-        print("Risk category: \(result.deviceIntelligence.riskCategory)")
+        print("Risk score: \(score)")
     }
     // Send result.token to your backend as a Bearer token
 } catch {
@@ -72,7 +73,7 @@ do {
 }
 ```
 
-The returned JWT token contains device intelligence, risk score, and any custom claims you've configured in the dashboard.
+The returned JWT contains device intelligence and any custom claims you've configured in the dashboard. The SDK caches it in the Keychain, so calling `validateAttestation()` again returns the cached token until it is close to expiry.
 
 ## 5. Verify on your backend
 

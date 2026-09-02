@@ -1,6 +1,21 @@
 ---
 title: "VRT Runs"
-description: "Create, complete, and query visual regression test runs"
+description: "Create, complete, review, and query visual regression test runs"
+---
+
+## Authentication
+
+All VRT endpoints take an API key, sent as `X-API-Key` or `Authorization: Bearer <key>`.
+
+| Operation | Required scope |
+|-----------|----------------|
+| Reads (list runs, run detail, images) | `vrt:read` |
+| Writes (create, complete, logs, review) | `vrt:write` |
+
+`:project` is your project slug. Creating a run creates the project on first use; every other route returns `404` for a slug that does not exist in your organization. Requests count against the `apikey` [rate limit bucket](/api-reference/conventions#per-tier-limits).
+
+Screens per run are capped by plan: Free 5, Pro 25, Business and Enterprise unlimited.
+
 ---
 
 ## Create a run
@@ -9,11 +24,7 @@ description: "Create, complete, and query visual regression test runs"
 POST /api/v1/vrt/runs/:project
 ```
 
-### Headers
-
-| Header | Required | Description |
-|--------|----------|-------------|
-| `X-API-Key` | Yes | Your API key |
+Two-phase friendly: post without `screens` to open a `running` run, then finish it with `PATCH`. Post with `screens` to record a complete run in one call. Request bodies are capped at 100 MB.
 
 ### Body (multipart/form-data)
 
@@ -21,25 +32,46 @@ POST /api/v1/vrt/runs/:project
 |-------|------|----------|-------------|
 | `branch` | `string` | Yes | Git branch name |
 | `commit_sha` | `string` | No | Git commit SHA |
-| `trigger` | `string` | Yes | What triggered the run (e.g., "ci", "manual") |
+| `trigger` | `string` | Yes | What triggered the run, e.g. `ci` or `manual` |
 | `duration` | `double` | No | Run duration in seconds |
-| `screens` | `json` | No | Screen metadata array |
-| `captures` | `file[]` | No | Screenshot PNG files |
-| `diffs` | `file[]` | No | Diff image PNG files |
+| `screens` | `json` | No | Screen metadata array — omit to open a `running` run |
+| `captures` | `file[]` | No | Screenshot PNGs, named `<screen>.png` |
+| `diffs` | `file[]` | No | Diff PNGs, named `<screen>_diff.png` |
+
+Each entry in `screens`:
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `name` | `string` | Screen name — matches the capture filename |
+| `status` | `string` | `passed`, `failed`, or `new` (`new_screen` is also accepted) |
+| `pixel_diff_percent` | `double` | Percentage of pixels that differ |
+| `perceptual_distance` | `double` | Perceptual distance from the baseline |
+| `pixel_threshold` | `double` | Threshold used for the pixel comparison |
+| `perceptual_threshold` | `double` | Threshold used for the perceptual comparison |
+| `message` | `string` | Optional note |
+| `steps` | `string` | Optional step log |
 
 ### Response
 
 ```json
 {
-  "run_id": "uuid",
+  "run_id": "3f8c1a90-1b2c-4d5e-8f90-112233445566",
   "status": "passed",
-  "url": "https://grantiva.io/dashboard/vrt/runs/uuid",
+  "url": "https://grantiva.io/dashboard/vrt/3f8c1a90-1b2c-4d5e-8f90-112233445566",
   "screen_count": 8,
   "passed_count": 8,
   "failed_count": 0,
   "new_count": 0
 }
 ```
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 401 | Missing or invalid API key |
+| 403 | Key lacks `vrt:write` |
+| 422 | More screens than your plan allows |
 
 ---
 
@@ -49,7 +81,32 @@ POST /api/v1/vrt/runs/:project
 PATCH /api/v1/vrt/runs/:project/:runId
 ```
 
-Upload final results (screens, captures, diffs) to complete a running test.
+Uploads the final screens, captures, and diffs for a run opened in `running` state. Same multipart fields as create, minus `branch`, `commit_sha`, and `trigger`; `screens` is required.
+
+**Response** — the same object as create.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 404 | Project or run not found |
+| 409 | The run is no longer `running` |
+
+---
+
+## Append logs
+
+```
+POST /api/v1/vrt/runs/:project/:runId/logs
+```
+
+```json
+{
+  "lines": "Log output to append..."
+}
+```
+
+Only works while the run is `running` — otherwise `409`.
 
 ---
 
@@ -59,22 +116,33 @@ Upload final results (screens, captures, diffs) to complete a running test.
 GET /api/v1/vrt/runs/:project
 ```
 
+**Query parameters**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `page` | 1 | Page number |
+| `per` | 50 | Items per page (max 100) |
+
 ### Response
 
 ```json
 {
   "runs": [
     {
-      "id": "uuid",
+      "id": "3f8c1a90-1b2c-4d5e-8f90-112233445566",
       "branch": "main",
       "commit_sha": "abc123",
+      "trigger": "ci",
       "status": "passed",
       "screen_count": 8,
       "passed_count": 8,
       "failed_count": 0,
-      "created_at": "2025-03-10T12:00:00Z"
+      "new_count": 0,
+      "duration": 42.5,
+      "created_at": "2026-03-10T12:00:00Z"
     }
-  ]
+  ],
+  "metadata": { "page": 1, "per": 50, "total": 120 }
 }
 ```
 
@@ -90,18 +158,81 @@ GET /api/v1/vrt/runs/:project/:runId
 
 ```json
 {
-  "run": { ... },
+  "run": { "id": "3f8c1a90-...", "status": "failed", "...": "..." },
   "screens": [
     {
-      "name": "Home",
-      "status": "passed",
-      "pixel_diff": 0.001,
-      "perceptual_distance": 1.2
+      "id": "9a1b2c3d-...",
+      "screen_name": "Home",
+      "status": "failed",
+      "review_status": null,
+      "pixel_diff_percent": 0.42,
+      "perceptual_distance": 1.2,
+      "pixel_threshold": 0.1,
+      "perceptual_threshold": 1.0,
+      "message": null,
+      "steps": null
     }
   ],
-  "logs": "Build output..."
+  "logs": "Build output...",
+  "pending_review_count": 1
 }
 ```
+
+`review_status` is `accepted`, `flagged`, or `null` when the screen has not been reviewed. `pending_review_count` counts failed and new screens still awaiting a decision — the number that blocks approval.
+
+---
+
+## Review a run
+
+Reviewing is the CI closer: accept the screens whose changes are intended, then approve the run to promote those captures to baselines.
+
+```
+POST /api/v1/vrt/runs/:project/:runId/screens/:screen/accept
+POST /api/v1/vrt/runs/:project/:runId/screens/:screen/flag
+POST /api/v1/vrt/runs/:project/:runId/screens/:screen/reset
+```
+
+Marks one screen accepted, flagged, or back to unreviewed. Each returns the screen object shown above.
+
+| Status | Meaning |
+|--------|---------|
+| 404 | Run or screen not found |
+| 409 | The run's status no longer allows review changes |
+
+### Approve
+
+```
+POST /api/v1/vrt/runs/:project/:runId/approve
+```
+
+Optional body:
+
+```json
+{ "accept_unreviewed": true }
+```
+
+With `accept_unreviewed`, every still-unreviewed failed or new screen is accepted first. Approving promotes each accepted screen's capture to the baseline for the run's branch; flagged screens keep their existing baseline. The run's status becomes `approved`.
+
+**Response** — `200 OK` — the run detail object.
+
+| Status | Meaning |
+|--------|---------|
+| 400 | Failed or new screens are still unreviewed |
+| 409 | The run is still `running`, or already approved or rejected |
+
+### Reject
+
+```
+POST /api/v1/vrt/runs/:project/:runId/reject
+```
+
+Sets the run to `rejected`. Screens and baselines are untouched.
+
+**Response** — `200 OK` — the run detail object.
+
+| Status | Meaning |
+|--------|---------|
+| 409 | The run is still `running`, or already rejected |
 
 ---
 
@@ -112,20 +243,11 @@ GET /api/v1/vrt/runs/:project/:runId/screens/:screen/capture
 GET /api/v1/vrt/runs/:project/:runId/screens/:screen/diff
 ```
 
-Returns PNG image data.
+Returns PNG image data (`Content-Type: image/png`), or `404` when the run has no image for that screen.
 
 ---
 
-## Append logs
+## See also
 
-```
-POST /api/v1/vrt/runs/:project/:runId/logs
-```
-
-### Body
-
-```json
-{
-  "lines": "Log output to append..."
-}
-```
+- [VRT Baselines](/api-reference/vrt/baselines)
+- [VRT Quickstart](/quickstart-vrt)

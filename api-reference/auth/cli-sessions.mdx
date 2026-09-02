@@ -3,7 +3,9 @@ title: "CLI Sessions"
 description: "Authenticate the Grantiva CLI via browser login"
 ---
 
-The CLI authentication flow creates a session, opens a browser for login, and polls until complete.
+The CLI authentication flow creates a session, opens a browser for the user to sign in, and polls until the session completes. `grantiva auth login` does all of this for you — this page documents the endpoints behind it.
+
+Sessions are valid for 90 days from creation, but a session only stays useful until it is completed and polled once: the key is handed over exactly once and then cleared from the session record.
 
 ## Create a session
 
@@ -11,13 +13,17 @@ The CLI authentication flow creates a session, opens a browser for login, and po
 POST /api/v1/auth/cli/sessions
 ```
 
+No authentication. Returns the session id to embed in the browser login URL.
+
 ### Response
 
 ```json
 {
-  "session_id": "uuid"
+  "session_id": "3f8c1a90-1b2c-4d5e-8f90-112233445566"
 }
 ```
+
+Open `https://api.grantiva.io/api/v1/auth/cli?session=<session_id>` in the user's browser. They sign in there with a password or a passkey.
 
 ---
 
@@ -26,6 +32,8 @@ POST /api/v1/auth/cli/sessions
 ```
 GET /api/v1/auth/cli/sessions/:sessionId
 ```
+
+No authentication — knowing the session id is the credential, so treat it as a secret.
 
 ### Response
 
@@ -37,21 +45,32 @@ GET /api/v1/auth/cli/sessions/:sessionId
 }
 ```
 
-Status values: `pending`, `active`, `expired`.
+`status` is `pending`, `active`, or `expired`. A pending session past its expiry flips to `expired` on the next poll.
 
-When `active`, the response includes the API key and email:
+When the browser login completes, the next poll returns the key:
 
 ```json
 {
   "status": "active",
-  "api_key": "aat_abc123...",
-  "email": "user@example.com"
+  "api_key": "gpat_abc123...",
+  "email": "you@example.com"
 }
 ```
 
+<Warning>The `api_key` is returned **once**. The server clears it from the session as soon as it is read — a second poll returns `"api_key": null` with `status: "active"`. Store it on first read.</Warning>
+
+The issued key is a personal access token (`gpat_` prefix) scoped to the user's default organization, with full API access. It is named `CLI session (<email>)` and appears in the organization's [API key list](/api-reference/org/api-keys). Revoke it there to sign the CLI out permanently.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | The session id is not a UUID |
+| 404 | Session not found |
+
 ---
 
-## Validate API key
+## Validate a key
 
 ```
 GET /api/v1/auth/me
@@ -67,7 +86,16 @@ GET /api/v1/auth/me
 
 ```json
 {
-  "email": "user@example.com",
-  "api_key_prefix": "aat_abc1"
+  "email": "you@example.com",
+  "api_key_prefix": "gpat_abc"
 }
 ```
+
+`api_key_prefix` is the first 8 characters of the key. `401` when the key is unknown, revoked, or expired.
+
+---
+
+## See also
+
+- [Account & Sessions](/api-reference/auth/account)
+- [API Keys](/api-reference/org/api-keys)

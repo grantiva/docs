@@ -16,7 +16,7 @@ There are four roles, ordered `viewer` < `member` < `admin` < `owner`. Permissio
 | **Member** | No | No | No | Yes | No |
 | **Viewer** | No | No | No | No | No |
 
-- **Manage members** — invite, remove, and change roles
+- **Manage members** — invite teammates, revoke pending invites, and remove members
 - **Manage settings** — rename the organization, change the billing email, edit notification preferences
 - **Manage API keys** — create, rotate, and revoke [organization API keys](/api-reference/org/api-keys)
 - **Write projects** — register apps, edit feature flags, custom claims, and webhooks
@@ -35,20 +35,20 @@ Every member and every **pending invite** consumes a seat. The limit comes from 
 | Business | 10 |
 | Enterprise | 50 |
 
-An invite that would push members plus pending invites past the limit is rejected with a message naming your current counts. Remove a member to free a seat, or [upgrade your plan](/dashboard/billing).
+An invite that would push members plus pending invites past the limit is rejected with a message naming your current counts. Free a seat by removing a member or revoking a pending invite, or [upgrade your plan](/dashboard/billing).
 
 <Note>
-A pending invite keeps holding its seat until it is accepted. There is currently no way to cancel one, so on a small plan invite deliberately.
+Only **pending, unexpired** invites hold a seat. Revoking an invite releases its seat immediately, and an invite that expires stops holding one on its own.
 </Note>
 
 ## Invite a teammate
 
-Admins and owners can invite. From **Team** in the dashboard, enter the teammate's email address and pick the role they should get — **Member** if you don't choose.
+Admins and owners can invite. From **Team** in the dashboard, enter the teammate's email address and pick the role they should get — **Admin**, **Member**, or **Viewer**, defaulting to **Member**.
 
 The invite is rejected if:
 
 - the email already belongs to a member of the organization
-- a pending invite already exists for that email
+- a pending, unexpired invite already exists for that email
 - the organization is out of seats
 
 Otherwise Grantiva emails the address a one-click acceptance link and the invite appears in the pending list.
@@ -66,20 +66,19 @@ Otherwise Grantiva emails the address a one-click acceptance link and the invite
     Accepting adds them to the organization with the role the invite carried and marks the invite accepted. Accepting twice is harmless — an existing membership is left as it is.
   </Step>
   <Step title="Inviter notified">
-    If the organization's `teamInvite` [notification preference](/api-reference/org/settings) is on, the person who sent the invite gets an email confirming it was accepted.
+    If the organization's team-invite [notification preference](/api-reference/org/settings) is on, the person who sent the invite gets an email confirming it was accepted.
   </Step>
 </Steps>
 
-An invite that sits unaccepted for 7 days expires and can no longer be used. It still counts against your seats, and a second invite to the same address is refused while the first is outstanding.
+An invite that sits unaccepted for 7 days expires and can no longer be used. Once expired it stops holding a seat, and you can invite the same address again.
 
-## Change a member's role
+## Revoke a pending invite
 
-Admins and owners can change roles from the members page. Two rules apply:
+Admins and owners can revoke an invite that hasn't been accepted yet. Revoking frees the seat and lets you invite the same address again. Revoking an already-revoked invite is a no-op, and an invite that has already been accepted can't be revoked — remove the member instead.
 
-- You cannot assign a role **higher than your own**. An admin can promote someone to admin, not to owner.
-- Only an owner can change another **owner's** role.
-
-Every change is recorded in the audit log as `member.role_changed`, with the old and new roles.
+<Note>
+There is no way to change an existing member's role today. To move someone between roles, remove them and send a fresh invite carrying the role you want.
+</Note>
 
 ## Remove a member
 
@@ -101,8 +100,8 @@ Team changes are written to the organization audit log with a `resource.verb` ac
 | Action | Recorded when |
 |--------|---------------|
 | `invite.created` | An invite is sent — includes the email and role |
+| `invite.revoked` | A pending invite is revoked — includes the email |
 | `invite.accepted` | An invitee joins the organization |
-| `member.role_changed` | A member's role changes — includes old and new role |
 | `member.removed` | A member is removed — includes their email |
 
-Read and filter the log from the dashboard, or through the [audit log API](/api-reference/org/settings).
+Manage members programmatically with the [team API](/api-reference/org/team). Read and search the log from **Audit Log** in the dashboard, or through the [audit log API](/api-reference/org/settings#audit-log). See [Settings and audit log](/dashboard/settings) for the full action catalog.

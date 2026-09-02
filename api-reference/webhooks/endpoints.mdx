@@ -1,15 +1,23 @@
 ---
 title: "Webhook Endpoints"
-description: "Manage outgoing webhook endpoints for your organization"
+description: "Create, test, and monitor outgoing webhook endpoints for your organization"
 ---
 
-<Info>Webhooks are available on **Pro**, **Business**, and **Enterprise** plans. Endpoint limits vary by tier.</Info>
+<Info>Webhooks require the **Pro** plan or higher. Endpoint limits by tier: Pro 3, Business 10, Enterprise unlimited. The Free plan cannot create endpoints.</Info>
 
 ## Authentication
 
-Webhook management endpoints are **dashboard-session authenticated** (cookie-based) — API keys are not accepted on `/api/v1/org/*` routes.
+These endpoints accept either a dashboard session cookie or a server API key sent as `Authorization: Bearer <key>`.
 
-Callers must have **Admin** role or above within the organization.
+| Endpoint | Session role | Key scope |
+|----------|--------------|-----------|
+| `GET /api/v1/org/webhooks` | Any member | `webhooks:read` |
+| `POST /api/v1/org/webhooks` | Admin | `webhooks:write` |
+| `PATCH /api/v1/org/webhooks/:id` | Admin | `webhooks:write` |
+| `DELETE /api/v1/org/webhooks/:id` | Admin | `webhooks:delete` |
+| `POST /api/v1/org/webhooks/:id/test` | Admin | `webhooks:test` |
+| `GET /api/v1/org/webhooks/:id/deliveries` | Any member | `webhooks:read` |
+| `POST /api/v1/org/webhooks/:id/deliveries/:deliveryId/retry` | Admin | `webhooks:write` |
 
 ---
 
@@ -19,7 +27,7 @@ Callers must have **Admin** role or above within the organization.
 GET /api/v1/org/webhooks
 ```
 
-Returns all configured webhook endpoints for the organization, sorted by creation date (newest first).
+Returns all configured webhook endpoints for the organization, newest first.
 
 **Response**
 
@@ -28,7 +36,7 @@ Returns all configured webhook endpoints for the organization, sorted by creatio
   {
     "id": "550e8400-e29b-41d4-a716-446655440000",
     "url": "https://example.com/hooks/grantiva",
-    "events": ["attestation.completed", "risk_threshold_exceeded"],
+    "events": ["device.new", "device.high_risk"],
     "isActive": true,
     "description": "Production event receiver",
     "createdAt": "2026-03-01T12:00:00Z",
@@ -36,6 +44,8 @@ Returns all configured webhook endpoints for the organization, sorted by creatio
   }
 ]
 ```
+
+The signing `secret` is not included — it is returned only at creation time.
 
 ---
 
@@ -50,24 +60,22 @@ POST /api/v1/org/webhooks
 ```json
 {
   "url": "https://example.com/hooks/grantiva",
-  "events": ["attestation.completed", "risk_threshold_exceeded"],
+  "events": ["device.new", "device.high_risk"],
   "description": "Production event receiver"
 }
 ```
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
-| `url` | string | Yes | HTTPS destination URL |
-| `events` | string[] | Yes | Event types to subscribe to. Must contain at least one. |
+| `url` | string | Yes | Destination URL |
+| `events` | string[] | Yes | Event types to subscribe to. Must contain at least one |
 | `description` | string | No | Human-readable label for this endpoint |
 
 **Supported event types**
 
-| Event | Description |
-|-------|-------------|
-| `attestation.completed` | Device successfully attested |
-| `risk_threshold_exceeded` | Device risk score crossed a threshold |
-| `device_blocked` | Device blocked due to high risk score |
+`device.new`, `device.attested.first`, `device.high_risk`, `device.attestation_failed`, `attestation.anomaly`, `flag.created`, `flag.updated`, `flag.deleted`, `subscription.changed`, `subscription.expired`, `subscription.refunded`.
+
+Payloads for each are in [Webhook Events](/api-reference/webhooks/events).
 
 **Response** — `201 Created`
 
@@ -75,7 +83,7 @@ POST /api/v1/org/webhooks
 {
   "id": "550e8400-e29b-41d4-a716-446655440000",
   "url": "https://example.com/hooks/grantiva",
-  "events": ["attestation.completed"],
+  "events": ["device.new"],
   "isActive": true,
   "description": "Production event receiver",
   "secret": "whsec_abc123...",
@@ -87,6 +95,13 @@ POST /api/v1/org/webhooks
 The `secret` field is returned **only at creation time**. Store it immediately — it cannot be retrieved again. Use it to verify the `X-Grantiva-Signature` header on incoming deliveries.
 </Warning>
 
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 400 | `url` is not a valid URL, or `events` is empty |
+| 403 | Free plan, or the endpoint limit for your tier is reached |
+
 ---
 
 ## Update a webhook endpoint
@@ -95,21 +110,19 @@ The `secret` field is returned **only at creation time**. Store it immediately �
 PATCH /api/v1/org/webhooks/:id
 ```
 
-Toggle the endpoint on/off, change subscribed events, or update the description. All fields are optional.
+Toggle the endpoint on or off, change subscribed events, or update the description. All fields are optional.
 
 **Request body**
 
 ```json
 {
   "isActive": false,
-  "events": ["attestation.completed", "device_blocked"],
+  "events": ["device.new", "attestation.anomaly"],
   "description": "Updated label"
 }
 ```
 
-**Response** — `200 OK`
-
-Returns the updated `WebhookResponse` object (same shape as list response, without `secret`).
+**Response** — `200 OK` — the updated endpoint object (same shape as the list response, without `secret`).
 
 ---
 
@@ -125,9 +138,157 @@ Permanently removes the webhook endpoint. In-flight deliveries are not retried a
 
 ---
 
+## Send a test delivery
+
+```
+POST /api/v1/org/webhooks/:id/test
+```
+
+Synchronously delivers a synthetic `attestation.completed` event to the endpoint's configured URL and returns the outcome. The test delivery:
+
+- is signed with the endpoint's secret (`X-Grantiva-Signature`), exactly like a real delivery
+- does **not** create a delivery record and is **not** retried on failure
+- includes `"is_test": "true"` in the payload data
+- is sent regardless of which events the endpoint subscribes to
+
+**Test payload sent to your endpoint**
+
+```json
+{
+  "event": "attestation.completed",
+  "timestamp": "2026-07-26T12:00:00Z",
+  "data": {
+    "key_id": "test_key_550e8400",
+    "device_id": "test_device_550e8400",
+    "device_model": "iPhone16,2",
+    "bundle_id": "com.example.app",
+    "risk_score": "5",
+    "attestation_id": "a3f1c9e2-...",
+    "is_test": "true"
+  }
+}
+```
+
+Headers on the outgoing request:
+
+| Header | Value |
+|--------|-------|
+| `Content-Type` | `application/json` |
+| `X-Grantiva-Signature` | `sha256=<hex HMAC-SHA256 of the raw body>` |
+| `X-Grantiva-Event` | `attestation.completed` |
+| `X-Grantiva-Delivery` | `test-<uuid>` |
+| `User-Agent` | `Grantiva-Webhooks/1.0` |
+
+<Note>`attestation.completed` is a test-only event name. It is not a subscribable event type — real attestation events arrive as `device.new`, `device.high_risk`, and the others listed above.</Note>
+
+**Response** — `200 OK`
+
+```json
+{
+  "success": true,
+  "httpStatus": 200,
+  "responseBody": "ok",
+  "latencyMs": 142,
+  "error": null
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `success` | boolean | `true` when your endpoint returned a 2xx status |
+| `httpStatus` | integer \| null | HTTP status your endpoint returned; `null` if the connection failed |
+| `responseBody` | string \| null | First 200 characters of your endpoint's response body |
+| `latencyMs` | integer | Round-trip latency in milliseconds |
+| `error` | string \| null | `"HTTP <status>"` for non-2xx responses, or the transport error message |
+
+---
+
+## List deliveries
+
+```
+GET /api/v1/org/webhooks/:id/deliveries
+```
+
+Paginated delivery history for a webhook endpoint, newest first.
+
+**Query parameters**
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `page` | 1 | Page number |
+| `per` | 20 | Items per page (max 100) |
+
+**Response**
+
+```json
+{
+  "items": [
+    {
+      "id": "7f3e2a10-1b2c-4d5e-8f90-112233445566",
+      "webhookId": "550e8400-e29b-41d4-a716-446655440000",
+      "eventType": "device.new",
+      "status": "success",
+      "httpStatus": 200,
+      "responseBody": "ok",
+      "error": null,
+      "attemptCount": 1,
+      "nextRetryAt": null,
+      "deliveredAt": "2026-07-26T12:00:03Z",
+      "createdAt": "2026-07-26T12:00:02Z"
+    }
+  ],
+  "metadata": {
+    "page": 1,
+    "per": 20,
+    "total": 42
+  }
+}
+```
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `status` | string | `pending`, `success`, or `failed` |
+| `httpStatus` | integer \| null | Last HTTP status returned by your endpoint |
+| `responseBody` | string \| null | First 1000 characters of your response from the last attempt |
+| `error` | string \| null | Last error message, if any |
+| `attemptCount` | integer | Delivery attempts so far — up to 3, with 1 min / 5 min / 30 min backoff |
+| `nextRetryAt` | string \| null | When the next automatic retry is scheduled |
+| `deliveredAt` | string \| null | When the delivery succeeded |
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 403 | Organization is on the Free plan |
+| 404 | Webhook not found in this organization |
+
+---
+
+## Retry a delivery
+
+```
+POST /api/v1/org/webhooks/:id/deliveries/:deliveryId/retry
+```
+
+Manually re-sends a delivery with the original payload. The delivery is reset to `pending` with `attemptCount` back to `0`, giving it a fresh automatic-retry budget, and the HTTP call fires in the background — the response reflects the reset state, not the outcome of the new attempt. Poll the deliveries list to see the result.
+
+**Response** — `200 OK`
+
+Returns the delivery object (same shape as the list items) with `status: "pending"` and `attemptCount: 0`.
+
+**Errors**
+
+| Status | Meaning |
+|--------|---------|
+| 403 | Organization is on the Free plan |
+| 404 | Webhook or delivery not found in this organization |
+| 422 | The webhook endpoint is inactive — re-enable it before retrying |
+
+---
+
 ## Signature verification
 
-Every delivery includes an `X-Grantiva-Signature` header containing an HMAC-SHA256 signature of the raw request body, signed with your webhook's `secret`.
+Every delivery includes an `X-Grantiva-Signature` header: the string `sha256=` followed by the hex-encoded HMAC-SHA256 of the raw request body, keyed with your endpoint's `secret`.
 
 Verify the signature before processing any payload:
 
@@ -143,11 +304,12 @@ func isValidSignature(payload: Data, signature: String, secret: String) -> Bool 
 }
 ```
 
-For Node.js, Python, and Go examples see [Webhooks Concepts](/concepts/webhooks).
+For Node.js, Python, and Go examples see [Webhooks Concepts](/concepts/webhooks#verifying-signatures).
 
 ---
 
 ## See also
 
 - [Webhook Quickstart](/quickstart-webhooks) — step-by-step setup guide
-- [Webhooks Concepts](/concepts/webhooks) — delivery retries, event payloads, signature verification
+- [Webhook Events](/api-reference/webhooks/events) — every event and its payload
+- [Risk Alert Rules](/api-reference/org/risk-alerts) — per-device risk webhooks with the same signature scheme

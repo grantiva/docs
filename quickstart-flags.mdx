@@ -48,29 +48,25 @@ let allFlags = try await grantiva.flags.getFlags()
 
 ## 4. Environments
 
-Flags can have different values per environment:
+A flag can hold a different value per environment. The SDK evaluates against `production`; set the other environments' values in the dashboard for your staging and development builds.
 
 ```swift
-// Switch to staging
-grantiva.flags.environment = .staging
-let flags = try await grantiva.flags.getFlags(forceRefresh: true)
-
-// Back to production
-grantiva.flags.environment = .production
+let environment = await grantiva.flags.environment  // .production
 ```
 
 ## 5. Cache control
 
-Flags are cached for 5 minutes by default:
+Flags are cached in memory for 5 minutes:
 
 ```swift
-// Change cache duration
-grantiva.flags.cacheTTL = 60  // 1 minute
+// Bypass the cache for one read
+let fresh = try await grantiva.flags.getFlags(forceRefresh: true)
 
-// Force refresh
-grantiva.flags.refresh()
-let fresh = try await grantiva.flags.getFlags()
+// Drop the cache so the next fetch goes to the network
+await grantiva.flags.refresh()
 ```
+
+Flag changes made in the dashboard also arrive over a live stream within seconds — see [Live updates](/sdk/feature-flags#live-updates-sse).
 
 ## SwiftUI example
 
@@ -98,12 +94,12 @@ struct ContentView: View {
 
 ## Tier limits
 
-| Tier | Max flags |
-|------|-----------|
-| Free | 10 |
-| Pro | 50/app |
-| Business | 200/app |
-| Enterprise | Unlimited |
+| Tier | Flags per app | Environments | Targeting rules per flag |
+|------|---------------|--------------|--------------------------|
+| Free | 10 | 1 | 0 |
+| Pro | 50 | 3 | 5 |
+| Business | 200 | 10 | 20 |
+| Enterprise | Unlimited | Unlimited | Unlimited |
 
 ## Next steps
 

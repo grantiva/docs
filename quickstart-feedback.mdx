@@ -67,7 +67,22 @@ let (ticket, messages) = try await grantiva.feedback.getTicket(id: ticketId)
 try await grantiva.feedback.reply(to: ticketId, body: "Here's the crash log...")
 ```
 
-## 6. With user identity (optional)
+## 6. Get pushed when an admin replies
+
+Forward the APNs token Apple gives your app delegate. The SDK attaches it to submissions and comments, and the backend pushes the device when an admin replies on that thread.
+
+```swift
+func application(
+    _ application: UIApplication,
+    didRegisterForRemoteNotificationsWithDeviceToken deviceToken: Data
+) {
+    grantiva.setPushToken(deviceToken)
+}
+```
+
+This requires a push app linked to your organization — see [Push notifications](/push/overview).
+
+## 7. With user identity (optional)
 
 If you identify users, feedback persists across devices:
 
@@ -77,6 +92,10 @@ await grantiva.identify("user_123")
 // Now all feedback calls are scoped to this user
 let tickets = try await grantiva.feedback.getUsersTickets()
 ```
+
+<Note>
+`grantiva.feedback` is an `actor`, so every call takes `await` — including `refreshFeatureRequests()` and `clearCache()`, which don't throw.
+</Note>
 
 ## SwiftUI example
 

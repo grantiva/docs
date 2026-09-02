@@ -17,36 +17,95 @@ GET /api/v1/flags
 | `X-Team-ID` | Yes | Apple Developer Team ID |
 | `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side/simulator callers. Identity headers alone return 401. See [Authentication](/api-reference/authentication) |
 
+### Device context headers
+
+Targeting rules match against these optional headers. Send them to get rule-resolved values; omit them all and every flag falls back to its environment default.
+
+| Header | Example | Rule attribute |
+|--------|---------|----------------|
+| `X-Device-Model` | `iPhone16,1` | `device_model` |
+| `X-OS-Version` | `18.1.2` | `os_version` |
+| `X-App-Version` | `2.1.0` | `app_version` |
+| `X-Device-ID` | `abc123` | `device_id` — also the bucketing key for percentage rollouts and the lookup key for overrides |
+| `X-Risk-Score` | `12` | `risk_score` |
+| `X-Locale` | `en_US` | `locale` |
+| `X-Country` | `US` | `country` |
+| `X-User-ID` | `user_123` | `user_id` |
+| `X-Attestation-Status` | `attested` | `attestation_status` — `attested`, `unattested`, or `expired` |
+| `X-Custom-<key>` | `X-Custom-beta-group: internal` | `custom.<key>` |
+
 ### Rate limit headers
 
-Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset`. 429 responses include `Retry-After`.
+Responses include `X-RateLimit-Limit`, `X-RateLimit-Remaining`, and `X-RateLimit-Reset` from the `flags` bucket. 429 responses include `Retry-After`.
 
 ### Query parameters
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `environment` | `string` | `production` | `production`, `staging`, or `development` |
+| `environment` | `string` | `production` | Environment slug. Unknown slugs return an empty flag map rather than an error |
 
 ## Response
 
 ```json
 {
   "flags": {
+    "beta_features": false,
     "dark_mode": true,
-    "upload_limit": 50,
     "theme": "modern",
-    "beta_features": false
+    "upload_limit": 50
   }
 }
 ```
 
-Flag values are resolved for the requested environment. Each flag value is typed (boolean, integer, double, string, or JSON).
+Values are typed according to each flag's value type (boolean, integer, double, string, or JSON), and keys are sorted alphabetically.
+
+### How a value is resolved
+
+For each flag, in order:
+
+1. An active per-device [override](/api-reference/flags/overrides) matching `X-Device-ID` wins outright.
+2. Otherwise [targeting rules](/api-reference/flags/rules) are evaluated in priority order; the first rule whose conditions all match and whose rollout admits the device supplies the value. Rules are skipped entirely when no device context headers are sent.
+3. Otherwise the flag's value for that environment is used — its "on" value when the flag is active in that environment, its "off" value when it is not.
+
+Flags with no configured value in the requested environment are omitted from the map. A request carrying identity headers sees that app's flags plus the organization-wide ones; an API-key request without identity headers sees only the organization-wide flags.
+
+Every returned flag is recorded as an evaluation, which is what the dashboard's flag evaluation feed reports.
+
+---
+
+## List environments
+
+```
+GET /api/v1/flags/environments
+```
+
+Same authentication and rate-limit bucket. Returns your organization's flag environments in sort order.
+
+```json
+[
+  {
+    "id": "550e8400-e29b-41d4-a716-446655440000",
+    "name": "Production",
+    "slug": "production",
+    "color": "#6b7280",
+    "isDefault": true,
+    "sortOrder": 0,
+    "createdAt": "2026-01-15T12:00:00Z"
+  }
+]
+```
 
 ## Tier limits
 
-| Tier | Max flags |
-|------|-----------|
-| Free | 10 (on/off only) |
-| Pro | 50/app |
-| Business | 200/app |
-| Enterprise | Unlimited |
+| Tier | Max flags | Max environments |
+|------|-----------|------------------|
+| Free | 10 | 1 |
+| Pro | 50 | 3 |
+| Business | 200 | 10 |
+| Enterprise | Unlimited | Unlimited |
+
+## See also
+
+- [Stream Flags (SSE)](/api-reference/flags/stream) — push updates instead of polling
+- [Test an evaluation](/api-reference/flags/evaluate) — dry-run a flag against a simulated device
+- [Manage Flags](/api-reference/flags/manage) — create and update flags with an API key

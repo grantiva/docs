@@ -1,0 +1,60 @@
+---
+title: "Devices"
+description: "Browse every device that has attested, filter by risk, and see why a device scored what it did"
+---
+
+**Devices** in the dashboard lists every device profile in your organization, newest attestation first. It is the place to answer "why is this specific device flagged?".
+
+## Finding a device
+
+- **Search** across App Attest key id, device model, and OS version
+- **Filter by risk band** — click a segment of the risk distribution bar to narrow the list to Low (0–20), Medium (21–50), High (51–75), or Critical (76–100)
+
+Open a row for the device detail panel.
+
+## What a device profile holds
+
+| Field | Meaning |
+|-------|---------|
+| Key id | The App Attest key id — the stable per-device identifier, and the `sub` claim in the token |
+| App | Which registered app the device attested against |
+| First seen | The device's first attestation |
+| Last attestation | Most recent attestation |
+| Attestation count | Lifetime attestations from this profile |
+| Risk score | Current 0–100 score |
+| Device model, OS version, app version | As reported by the SDK |
+| Jailbreak detected | Whether jailbreak signals were present |
+| Last country | Coarse IP geolocation from the edge, when available |
+| Suspicious events | Count of recorded security anomalies |
+| Development build | Whether the attestation came from a Debug, Xcode, or internal TestFlight install |
+
+The detail panel also shows the **reasoning** behind the current score — jailbreak signals, debug build, suspicious events after recency decay, the new-device penalty, and any clean-streak credit. See [Risk Scoring](/concepts/risk-scoring) for the factors themselves.
+
+<Note>
+A device that regenerates its App Attest key keeps its profile: Grantiva matches it back by a hashed hardware fingerprint and rotates the key id on the existing row, so the history and MAD count stay intact.
+</Note>
+
+## API
+
+```bash
+# Filtered, paginated device list
+curl "https://api.grantiva.io/api/v1/org/devices?risk_min=51&jailbroken=true&per=50" \
+  -H "Authorization: Bearer aat_YOUR_ORG_KEY"
+
+# One device, by App Attest key id
+curl https://api.grantiva.io/api/v1/org/devices/SGVsbG8sIHdvcmxkIQ-keyId \
+  -H "Authorization: Bearer aat_YOUR_ORG_KEY"
+```
+
+| Query parameter | Meaning |
+|-----------------|---------|
+| `page` | Page number, from 1 |
+| `per` | Page size, default 20, max 100 |
+| `risk_min` / `risk_max` | Bound the risk score, each 0–100 |
+| `jailbroken` | `true` or `false` |
+| `app_id` | Restrict to one registered app |
+| `search` | Match key id, model, or OS version |
+
+Both endpoints require the `devices:read` scope. Wire keys are `snake_case` (`key_id`, `risk_score`, `jailbreak_detected`, and so on).
+
+For richer per-device analytics see [Device details](/api-reference/analytics/devices), and to pull the whole fleet at once use the [export](/dashboard/analytics#export).

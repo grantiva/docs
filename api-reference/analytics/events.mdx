@@ -1,0 +1,118 @@
+---
+title: "Events"
+description: "Paginated attestation event log"
+---
+
+Every challenge, attestation, and failure is recorded as an event. Two endpoints read the log: one for API keys, one for the dashboard.
+
+## Event log
+
+```
+GET /api/v1/analytics/events
+```
+
+### Headers
+
+| Header | Required | Description |
+|--------|----------|-------------|
+| `X-API-Key` | Yes | Your API key, with the `analytics:read` scope. `Authorization: Bearer <key>` works too |
+
+### Query parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | `int` | 1 | Page number |
+| `perPage` | `int` | 50 | Page size, 1–200. `per_page` is accepted as an alias |
+| `from` | `string` | — | ISO 8601 timestamp; include events at or after it |
+| `to` | `string` | — | ISO 8601 timestamp; include events at or before it |
+| `deviceId` | `string` | — | Filter to one device ID |
+| `eventType` | `string` | — | One of `challenge_generated`, `attestation_validated`, `attestation_failed`, `suspicious_activity`, `token_issued`. Unknown values return `400` |
+
+Malformed `from`/`to` values return `400`.
+
+### Response
+
+```json
+{
+  "data": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "eventType": "attestation_validated",
+      "keyId": "abc123keyid",
+      "deviceId": "abc123",
+      "ipAddress": "203.0.113.7",
+      "success": true,
+      "errorReason": null,
+      "riskScore": 12,
+      "createdAt": "2026-03-10T12:00:00Z"
+    }
+  ],
+  "meta": {
+    "page": 1,
+    "perPage": 50,
+    "total": 15420,
+    "totalPages": 309
+  }
+}
+```
+
+Events are returned newest first.
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `eventType` | string | See the `eventType` filter above |
+| `keyId` | string | App Attest key ID |
+| `deviceId` | string \| null | The `device_id` passed to the challenge endpoint, when one was given |
+| `ipAddress` | string | Client IP recorded at the time, or `unknown` |
+| `errorReason` | string \| null | Populated on failures |
+| `riskScore` | integer | Risk score at the time of the event |
+
+### Example
+
+```bash
+curl -H "X-API-Key: aat_your_api_key" \
+  "https://api.grantiva.io/api/v1/analytics/events?eventType=attestation_failed&from=2026-03-01T00:00:00Z&perPage=100"
+```
+
+---
+
+## Dashboard event log
+
+```
+GET /api/v1/analytics/dashboard/events
+```
+
+The same log for the dashboard SPA. Requires a dashboard session.
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `page` | `int` | 1 | Page number |
+| `per` | `int` | 50 | Page size, max 100 |
+| `success` | `bool` | — | Filter by outcome |
+| `after` | `string` | — | ISO 8601 timestamp; include events at or after it. Malformed values return `400` |
+
+```json
+{
+  "items": [
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440000",
+      "eventType": "attestation_validated",
+      "keyId": "abc123keyid",
+      "deviceId": "abc123",
+      "ipAddress": "203.0.113.7",
+      "success": true,
+      "errorReason": null,
+      "riskScore": 12,
+      "createdAt": "2026-03-10T12:00:00Z"
+    }
+  ],
+  "metadata": { "page": 1, "per": 50, "total": 15420 }
+}
+```
+
+Note the different envelope: `items`/`metadata` here, `data`/`meta` on the API-key endpoint.
+
+## See also
+
+- [Reports](/api-reference/analytics/dashboard)
+- [Export](/api-reference/analytics/export) — bulk download of the same events

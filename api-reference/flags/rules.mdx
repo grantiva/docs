@@ -17,7 +17,9 @@ Rule endpoints live under the tenant flags API and use the same authentication a
 | `X-Team-ID` | Yes | Apple Developer Team ID |
 | `Authorization` | Yes | `Bearer <attestation JWT>` — or an API key for server-side callers. See [Authentication](/api-reference/authentication) |
 
-The dashboard UI manages rules through equivalent session-authenticated endpoints; the routes below are the API surface for server-side automation.
+API-key callers need the `flags:read` scope to list rules and `flags:write` to create, update, delete, or reorder them. Attestation JWTs are not scope-checked.
+
+The dashboard UI manages rules through equivalent session-authenticated endpoints; the routes below are the API surface for server-side automation. To check a rule set against a simulated device without touching production, use [Test an Evaluation](/api-reference/flags/evaluate).
 
 ---
 
