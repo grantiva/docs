@@ -45,7 +45,10 @@ POST /api/v1/attestation/refresh
 ```json
 {
   "token": "eyJhbGciOi...",
-  "expiresAt": "2025-03-11T12:00:00Z"
+  "expiresAt": "2025-03-11T12:00:00Z",
+  "customClaims": {
+    "plan": "pro"
+  }
 }
 ```
 
@@ -53,6 +56,7 @@ POST /api/v1/attestation/refresh
 |-------|------|-------------|
 | `token` | `string` | New signed JWT, including custom claims evaluated at refresh time |
 | `expiresAt` | `string` | Token expiration (ISO 8601) |
+| `customClaims` | `object` | The same custom claims projected into the new token, flattened to strings — identical in shape to the `customClaims` on [validate](/api-reference/attestation/validate). Empty object when none are configured |
 
 ## Errors
 
