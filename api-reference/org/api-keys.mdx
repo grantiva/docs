@@ -207,6 +207,7 @@ Scopes follow a `resource:action` format. A key with `api:all` passes every scop
 | `feedback:read` | View feature requests and support tickets |
 | `feedback:write` | Submit feature requests, votes, comments, and support tickets |
 | `feedback:manage` | Triage feedback as staff: change status, reply, set priority |
+| `end_users:delete` | Delete all data of one end user (account deletion) |
 | `vrt:read` | View visual regression runs and baselines |
 | `vrt:write` | Submit visual regression runs and manage baselines |
 | `release_notes:read` | View What's New release notes |
@@ -233,7 +234,7 @@ Scopes follow a `resource:action` format. A key with `api:all` passes every scop
 | Tier | Available scopes |
 |------|------------------|
 | Free | None — no API keys |
-| Pro | `analytics:read`, `devices:read`, `flags:read`, `flags:write`, `feedback:read`, `feedback:write`, `feedback:manage`, `vrt:read`, `vrt:write`, `release_notes:read`, `release_notes:write`, `org:read`, `org:write`, `alerts:read`, `keys:read`, `keys:write` |
+| Pro | `analytics:read`, `devices:read`, `flags:read`, `flags:write`, `feedback:read`, `feedback:write`, `feedback:manage`, `end_users:delete`, `vrt:read`, `vrt:write`, `release_notes:read`, `release_notes:write`, `org:read`, `org:write`, `alerts:read`, `keys:read`, `keys:write` |
 | Business | Everything except `admin:*` and `api:all` |
 | Enterprise | All scopes |
 

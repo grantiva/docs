@@ -179,7 +179,8 @@
               "api-reference/org/settings",
               "api-reference/org/release-notes",
               "api-reference/org/risk-alerts",
-              "api-reference/org/alerts"
+              "api-reference/org/alerts",
+              "api-reference/org/end-users"
             ]
           },
           {
