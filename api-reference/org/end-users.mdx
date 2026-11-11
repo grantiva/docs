@@ -1,0 +1,98 @@
+---
+title: "End-User Data Deletion"
+description: "Delete the data that Grantiva holds for one user of your app"
+---
+
+When a user deletes their account in your app, call this endpoint from your server. Grantiva then deletes the feedback data that it holds for that user.
+
+The user ID is the string that your app gives to [`grantiva.identify()`](/sdk/user-identity).
+
+## Authentication
+
+This endpoint accepts a server API key sent as `Authorization: Bearer <key>`, or a dashboard session cookie.
+
+| Endpoint | Session role | Key scope |
+|----------|--------------|-----------|
+| `POST /api/v1/org/end-users/delete` | Admin | `end_users:delete` |
+
+The owner of a personal key (`gpat_`) must also have the admin role or higher.
+
+<Warning>Make sure that the user ID is correct before you send the request. Grantiva cannot restore deleted data.</Warning>
+
+## Delete the data of a user
+
+```
+POST /api/v1/org/end-users/delete
+```
+
+**Request body**
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `user_id` | string | Yes | The ID that your app gives to `grantiva.identify()` |
+| `app_id` | string (UUID) | No | Deletes only the data of this app. Without it, the deletion includes each app of your organization. |
+
+```bash
+curl -X POST https://api.grantiva.io/api/v1/org/end-users/delete \
+  -H "Authorization: Bearer $GRANTIVA_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "5B1F0C0E-3C5A-4E0B-9B5E-2F6E1A7D9C11"}'
+```
+
+**Response**
+
+```json
+{
+  "deleted": {
+    "support_tickets": 2,
+    "ticket_messages": 7,
+    "feature_requests": 1,
+    "feature_comments": 3,
+    "votes": 5
+  }
+}
+```
+
+Each field is the number of deleted rows of that type.
+
+## What the endpoint deletes
+
+- Each support ticket that the user submitted, with all its messages. This includes the replies from your team and the email address on the ticket.
+- Each feature request that the user submitted, with all its votes and comments. This includes the votes and comments of other users on that request.
+- Each vote and comment of the user on a feature request of a different user. Grantiva corrects the vote count and the comment count of that request.
+- Each message of the user on a support ticket of a different user.
+
+The deletion runs in one transaction. If a part fails, Grantiva deletes nothing.
+
+## What the endpoint does not delete
+
+- **Device records.** Grantiva stores attestations, heartbeats, and flag evaluations under the device key and not under a user ID. The endpoint cannot find them from a user ID.
+- **Feedback from a user who was not identified.** If your app did not call `grantiva.identify()` before the user sent feedback, Grantiva stored that feedback under an ID of the device.
+- **Subscription records.** Grantiva stores subjects and entitlements under the subject ID, and one subject can be a group of users.
+- **Replies and comments from your team** on a ticket or request of a different user.
+- **Values that your team wrote** into a feature flag or a targeting rule, such as a list of user IDs or email addresses. Remove those values with the [feature flag endpoints](/api-reference/flags/manage).
+
+## How the user ID must match
+
+The match is exact and case-sensitive. Send the same string that your app gives to `grantiva.identify()`.
+
+For example, `UUID().uuidString` in Swift gives uppercase letters. If your server sends the same UUID in lowercase letters, Grantiva finds no data and each count is `0`.
+
+## Retries
+
+An unknown user ID gives `200` with each count at `0`. Thus you can send the same request again safely.
+
+Send the request again after a network error, a `429` response, or a `5xx` response. Do not make the user wait for this request. Record the deletion on your server and send the request until Grantiva answers `200`.
+
+## Errors
+
+| Status | Cause |
+|--------|-------|
+| `400` | `user_id` is missing or empty, or `app_id` is not an app of your organization |
+| `401` | The request has no valid API key and no session |
+| `403` | The key does not have the `end_users:delete` scope, or the role is lower than admin |
+| `429` | The key is over its rate limit |
+
+## Audit log
+
+Each request writes an `end_user.data_deleted` entry to the [audit log](/api-reference/org/settings). The entry has the counts and the key or the user that made the request. It does not have the user ID.
